@@ -1,6 +1,7 @@
 const prisma = require("../config/prisma");
 const { connect } = require("../routers/user");
 const cloudinary = require("../utils/cloudinary");
+
 exports.createpost = async (req, res) => {
     try {
         const {
@@ -33,21 +34,26 @@ exports.createpost = async (req, res) => {
             Propertytype,
             Other_related_expenses,
             categoryId,
-            Deposit_Rent,
             Interest,
         } = req.body
-        const { userId } = req.params
+
+        if (!req.session.user) {
+            return res.status(401).json({ message: "Unauthorized, please login first" });
+        }
+
+        const userId = req.session.user.id;
         const files = req.files;
+
         const nearbyLandmarksArray = Array.isArray(Nearby_Landmarks)
-          ? Nearby_Landmarks
-          : (Nearby_Landmarks ? [Nearby_Landmarks] : []);
+            ? Nearby_Landmarks
+            : (Nearby_Landmarks ? [Nearby_Landmarks] : []);
 
         const additionalAmenitiesArray = Array.isArray(Additional_Amenities)
-          ? Additional_Amenities
-          : (Additional_Amenities ? [Additional_Amenities] : []);
-        
+            ? Additional_Amenities
+            : (Additional_Amenities ? [Additional_Amenities] : []);
+
         const newPost = await prisma.propertyPost.create({
-            
+
             data: {
                 Property_Name,
                 Province,
@@ -58,7 +64,7 @@ exports.createpost = async (req, res) => {
                 Usable_Area: parseFloat(Usable_Area),
                 Total_Rooms: parseInt(Total_Rooms),
                 Year_Built,
-                Nearby_Landmarks:nearbyLandmarksArray,
+                Nearby_Landmarks: nearbyLandmarksArray,
                 Land_Size: parseFloat(Land_Size),
                 Bedrooms: parseInt(Bedrooms),
                 Bathroom: parseInt(Bathroom),
@@ -67,7 +73,7 @@ exports.createpost = async (req, res) => {
                 Contract_Seller,
                 LinkMap,
                 Price: parseFloat(Price),
-                Additional_Amenities:additionalAmenitiesArray,
+                Additional_Amenities: additionalAmenitiesArray,
                 Parking_Space: parseInt(Parking_Space),
                 Sell_Rent: Sell_Rent,
                 Link_line,
@@ -77,8 +83,7 @@ exports.createpost = async (req, res) => {
                 Latitude: parseFloat(Latitude),
                 Longitude: parseFloat(Longitude),
                 Other_related_expenses,
-                Deposit_Rent:parseFloat(Deposit_Rent),
-                Interest:parseFloat(Interest),
+                Interest: parseFloat(Interest),
                 Category: {
                     connect: {
                         id: categoryId
@@ -126,8 +131,8 @@ const handlecategory = async (req, res, categoryId) => {
         const products = await prisma.propertyPost.findMany({
             where: {
                 categoryId: {
-                    in:ids
-               }
+                    in: ids
+                }
             }, include: {
                 Image: true,
                 Category: true
@@ -300,7 +305,7 @@ exports.getPost = async (req, res) => {
                 Property_Name: true,
                 Province: true,
                 Deposit: true,
-                District:true,
+                District: true,
                 Subdistrict: true,
                 Address: true,
                 Category: true,

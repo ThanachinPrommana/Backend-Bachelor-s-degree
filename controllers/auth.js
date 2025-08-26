@@ -167,6 +167,7 @@ exports.login = async (req, res) => {
     if (!is_Match) {
       return res.status(400).json({ message: "Password invalid" });
     }
+
     let payload
 
     if (user.userType === "Seller" && user.Seller) {
@@ -177,6 +178,7 @@ exports.login = async (req, res) => {
         Phone: user.Phone,
         First_name: user.First_name,
         Last_name: user.Last_name,
+        image: user.image,
         Seller: {
           id: user.Seller.id,
           National_ID: user.Seller.National_ID,
@@ -201,32 +203,34 @@ exports.login = async (req, res) => {
           Occupation: user.Buyer.Occupation,
           Monthly_Income: user.Buyer.Monthly_Income,
           Family_Size: user.Buyer.Family_Size,
-          Preferred_Province: user.Buyer.Preferred_Province,   
-          Preferred_District: user.Buyer.Preferred_District,   
-          Parking_Needs: user.Buyer.Parking_Needs,             
-          Nearby_Facilities: user.Buyer.Nearby_Facilities,     
+          Preferred_Province: user.Buyer.Preferred_Province,
+          Preferred_District: user.Buyer.Preferred_District,
+          Parking_Needs: user.Buyer.Parking_Needs,
+          Nearby_Facilities: user.Buyer.Nearby_Facilities,
           Lifestyle_Preferences: user.Buyer.Lifestyle_Preferences,
           Special_Requirements: user.Buyer.Special_Requirements,
           DateofBirth: user.Buyer.DateofBirth,
-          image: user.Buyer.image, // ✅ ถ้าเก็บใน Buyer table
+          image: user.Buyer.image,
         }
       };
     }
-    console.log(payload)
-    jwt.sign(payload, process.env.SECRETKEY, {
-      expiresIn: "7d"
-    }, (err, token) => {
+    req.session.user = payload;
+
+    req.session.save(err => {
       if (err) {
-        return res.status(500).json({
-          message: "Server Error"
-        })
+        console.error("Session save error:", err);
+        return res.status(500).json({ message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ" });
       }
-      res.json({
+
+      
+      console.log("Login successful, session created for user:", req.session.user.id);
+      
+      res.status(200).json({
         message: "Login Sucess",
-        token,
-        user: payload
-      })
-    })
+        user: req.session.user
+      });
+    });
+
 
   } catch (err) {
     console.error(err);
@@ -299,4 +303,47 @@ exports.resetPassword = async (req, res) => {
   await prisma.passwordResetToken.delete({ where: { token } });
 
   res.json({ message: 'Password updated' });
+};
+
+
+exports.getProfile = async (req, res) => {
+  try {
+    const { id } = req.session.user;
+    if (!id) return res.status(401).json({ message: "Unauthorized" });
+
+    // query database ใหม่
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: { Seller: true,Buyer:true } // include seller info
+    });
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (user.Password) delete user.Password;
+
+    console.log("Successfully fetched profile for user:", user.id);
+    res.status(200).json({ user });
+  } catch (error) {
+    console.error("Error in getProfile:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+
+exports.logout = (req, res) => {
+  console.log("Logout route called");
+  console.log("Session before destroy:", req.session);
+  try {
+    req.session.destroy((err) => {
+      if (err) {
+        console.error("Session destruction error:", err);
+        return res.status(500).json({ message: "Could not log out, please try again." });
+      }
+      console.log("Session destroyed");
+      res.clearCookie('connect.sid', { path: '/' });
+      res.status(200).json({ message: "Logout successful" });
+    });
+  } catch (err) {
+    console.log("Catch error:", err)
+  }
 };

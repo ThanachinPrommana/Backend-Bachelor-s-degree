@@ -1,29 +1,50 @@
-const express = require("express")
-const app = express()
-const cors = require("cors")
-const morgan = require("morgan")
-const bodyParser = require("body-parser")
-const {readdirSync} = require("fs")
-require("dotenv").config()
-const path = require('path');
+const express = require("express");
+const app = express();
+const cors = require("cors");
+const morgan = require("morgan"); 
+const { readdirSync } = require("fs");
+require("dotenv").config();
+const session = require("express-session");
+
+
+app.use(morgan("dev"));
+
+
+const corsOptions = {
+    origin: 'http://localhost:5173', 
+    credentials: true,
+};
+app.use(cors(corsOptions));
+
+
+app.use(express.json());
+
+
+app.use(session({
+    secret: process.env.SECRETKEY || "SECRETKEY",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        maxAge: 2 * 60 * 60 * 1000,
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        domain: 'localhost' 
+    }
+}));
+
+
+app.use((req, res, next) => {
+    console.log("Request to:", req.path);
+    console.log("Session ID:", req.sessionID);
+    console.log("Session data:", req.session);
+    next();
+});
+
+
+readdirSync("./routers").map((c) => app.use("/api", require("./routers/" + c)));
 
 
 
-app.use(bodyParser.json())
-app.use(cors())
-app.use(morgan("dev"))
-app.use(express.json())
-
-app.use((req,res,next)=>{
-    res.set("Cache-Control","public,max-age=3600")
-    next()
-})
-
-
-
-readdirSync("./routers").map((c)=>app.use("/api",require("./routers/"+c)))
-
-
-
-
-app.listen(8200, () => console.log("On port 8200"))
+const PORT = 8200;
+app.listen(PORT, () => console.log(`Server on port ${PORT}`));

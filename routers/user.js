@@ -17,25 +17,27 @@ const {
 } = require("../controllers/user")
 const upload = require("../Middlewares/upload")
 const uploadDocument = require("../Middlewares/document")
+const {isAuthenticated} = require("../Middlewares/authCheck")
+
 //Seller
 router.put("/user/:id", updateStatusSeller)
 router.post("/user/:id", deleteUser)
 router.get("/userSeller", listUserSeller)
 router.get("/profileseller/:id",getSellerProfile)
-router.patch("/profileseller/:id",updateSeller)
-router.get("/post/seller/:id",getpostBySeller)
+router.patch("/profileseller",isAuthenticated,updateSeller)
+router.get("/post/seller",isAuthenticated,getpostBySeller)
 
 //Buyer
 router.get("/userBuyer", listUserBuyer)
 router.get("/profile/:id", getUserProfile)
-router.patch("/profile/:id",updateUser)
+router.patch("/profile",isAuthenticated,updateUser)
 
 //Deposit User
 router.post("/deposit/:userId",userdeposit)
 router.get("/deposit",getdeposits)
 
 //profile image
-router.post("/image/:id",upload.single("image"),updateimage)
+router.post("/image",isAuthenticated,upload.single("image"),updateimage)
 //upload document
 router.post("/document",uploadDocument.single("document"),useruploadDocument)
 module.exports = router

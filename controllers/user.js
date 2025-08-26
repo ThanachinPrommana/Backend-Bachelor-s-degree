@@ -119,6 +119,7 @@ exports.listUserBuyer = async (req, res) => {
     })
   }
 }
+//ไม่ใช้
 exports.getSellerProfile = async (req, res) => {
   try {
     const { id } = req.params
@@ -157,6 +158,7 @@ exports.getSellerProfile = async (req, res) => {
     })
   }
 }
+//ไม่ใช้
 exports.getUserProfile = async (req, res) => {
   try {
     const { id } = req.params
@@ -205,7 +207,12 @@ exports.getUserProfile = async (req, res) => {
 }
 exports.updateSeller = async (req, res) => {
   try {
-    const { id } = req.params
+    const { id } = req.session.user
+    if (!id) {
+      return res.status(401).json({
+        message: "Unauthorized: Please log in to update your profile."
+      });
+    }
     const {
       First_name,
       Last_name,
@@ -248,6 +255,7 @@ exports.updateSeller = async (req, res) => {
     if (Updateseller.Password) {
       delete Updateseller.Password
     }
+    req.session.user = Updateseller
     res.json({
       message: "Seller Updated Successfully",
       user: Updateseller
@@ -261,7 +269,12 @@ exports.updateSeller = async (req, res) => {
 }
 exports.updateUser = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.session.user
+    if (!id) {
+      return res.status(401).json({
+        message: "Unauthorized: Please log in to update your profile."
+      });
+    }
     const {
       First_name,
       Last_name,
@@ -319,6 +332,7 @@ exports.updateUser = async (req, res) => {
     if (Updateuser.Password) {
       delete Updateuser.Password;
     }
+    req.session.user = Updateuser
 
     res.json({
       message: "User update success",
@@ -335,7 +349,7 @@ exports.updateUser = async (req, res) => {
 
 exports.updateimage = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.session.user;
     const file = req.file;
 
     if (!file) {
@@ -413,7 +427,14 @@ exports.userdeposit = async (req, res) => {
 }
 exports.useruploadDocument = async (req, res) => {
   try {
-    const { userId, typeId, DocumentName, postId } = req.body;
+    const loggedInUser = req.session.user
+    if (!loggedInUser) {
+      res.status(401).json({
+        message: "Unauthorized: Please log in."
+      })
+    }
+    const userId = loggedInUser.id;
+    const {typeId,DocumentName,postId} = req.body
     // const {id} = req.params
     const file = req.file;
     if (!file) {
@@ -424,7 +445,7 @@ exports.useruploadDocument = async (req, res) => {
     // console.log("File resource_type:", file.resource_type);
     const documentUrl = file.secure_url || file.path || file.url;
     const publicId = file.filename || file.public_id;
-    
+
     // console.log("PublicId:",publicId)
     // console.log("URL:", documentUrl)
 
@@ -433,7 +454,7 @@ exports.useruploadDocument = async (req, res) => {
     // console.log("Resource Type:", resourceType);
     const document = await prisma.documentUpload.create({
       data: {
-        userId,
+        userId:userId,
         typeId,
         DocumentName,
         DocumentUrl: documentUrl,
@@ -463,12 +484,12 @@ exports.useruploadDocument = async (req, res) => {
       },
     });
     await prisma.notification.create({
-      data:{
-        userId,
+      data: {
+        userId:userId,
         Title: "เอกสารถูกส่งไปยังผู้ขาย",
         Message: "รออนุมัติ",
-        Status:"UNREAD",
-        relatedProcess: "DOCUMENT_UPLOAD",  
+        Status: "UNREAD",
+        relatedProcess: "DOCUMENT_UPLOAD",
         referenceId: document.id,
       }
     })
@@ -505,18 +526,14 @@ exports.getdeposits = async (req, res) => {
 }
 exports.getpostBySeller = async (req, res) => {
   try {
-    const { id } = req.params
-    const user = await prisma.user.findFirst({
-      where: { id }
-    })
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found"
-      })
+    const userFromSession = req.session.user
+    if (!userFromSession) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
+
     const posts = await prisma.propertyPost.findMany({
       where: {
-        userId: id
+        userId: userFromSession.id
       },
       select: {
         id: true,

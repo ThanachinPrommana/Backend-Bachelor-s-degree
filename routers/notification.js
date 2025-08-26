@@ -1,9 +1,9 @@
 const express = require("express")
 const router = express.Router()
 const {
-    getSellerNotifications
+    getuserNotifications
 } = require("../controllers/notification")
 
-router.get("/seller/notification/:sellerId",getSellerNotifications)
+router.get("/user/notification/:userId",getuserNotifications)
 
 module.exports = router

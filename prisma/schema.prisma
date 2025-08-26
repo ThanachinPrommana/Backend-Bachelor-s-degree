@@ -4,7 +4,8 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL_POSTGRES")
+  url      = env("DATABASE_URL_POSTGRES_SUPABASE")
+  directUrl = env("DATABASE_URL_MIGRATE")
 }
 
 // Enums ใช้ได้เหมือนเดิม
@@ -231,7 +232,7 @@ model PropertyPost {
   Name                   String?
   Phone                  String
 
-  Deposit_Rent           Float?
+  // Deposit_Rent           Float?
   Interest               Float?
   Status_post            Status_post                 @default(PENDING)
   user                   User                        @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -1,8 +1,8 @@
-// prisma/seed.js
+
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// ข้อมูล Categories ที่ถูกต้องของคุณ
+
 const categories = [
   { id: "cmegzfdya0006w2bwq5d8alc7", name: "condo" },
   { id: "cmegzfhx70007w2bwp63cbc1w", name: "house" },

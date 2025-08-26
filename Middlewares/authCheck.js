@@ -25,3 +25,23 @@ exports.authCheck = async (req, res, next) => {
   }
 };
 
+
+exports.isAuthenticated = (req, res, next) => { 
+    
+    if (!req.session) {
+        console.log("CRITICAL FAILURE: req.session object does NOT exist.");
+        console.log("-------------------------------------------\n");
+        return res.status(500).json({ message: 'Session middleware is not configured correctly.' });
+    }
+    
+    if (req.session && req.session.user) {
+        console.log("SUCCESS: User found in session. Proceeding...");
+        console.log("-------------------------------------------\n");
+        return next();
+    } else {
+        console.log("FAILURE: User NOT found in session. Sending 401.");
+        console.log("-------------------------------------------\n");
+        res.status(401).json({ message: 'You are not logged in' });
+    }
+};
+
