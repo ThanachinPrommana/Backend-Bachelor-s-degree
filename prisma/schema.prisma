@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL_POSTGRES_SUPABASE")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL_POSTGRES_SUPABASE")
   directUrl = env("DATABASE_URL_MIGRATE")
 }
 
@@ -231,24 +231,26 @@ model PropertyPost {
   Link_facbook           String?
   Name                   String?
   Phone                  String
+  floor                  Int?
 
   // Deposit_Rent           Float?
-  Interest               Float?
-  Status_post            Status_post                 @default(PENDING)
-  user                   User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId                 String
+  Interest       Float?
+  Status_post    Status_post      @default(PENDING)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
   // Propertytype           PropertyType?              @relation(fields: [propertyTypeId], references: [id])
   // propertyTypeId         String?
-  Category               Category?                   @relation(fields: [categoryId], references: [id])
-  categoryId             String?
-  Deposit                Deposit[]
-  createdAt              DateTime                    @default(now())
-  updatedAt              DateTime                    @updatedAt
-  Payment                Payment[]
-  Negotiation            Negotiation[]
-  Image                  Image[]
-  Seller                 Seller[]
-  DocumentUpload         DocumentUpload[]
+  Category       Category?        @relation(fields: [categoryId], references: [id])
+  categoryId     String?
+  Deposit        Deposit[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  Payment        Payment[]
+  Negotiation    Negotiation[]
+  Image          Image[]
+  Seller         Seller[]
+  DocumentUpload DocumentUpload[]
+  Video          Video[]
 }
 
 //เปรียบเหมือนตะกร้าสินค้า
@@ -382,4 +384,16 @@ model PasswordResetToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+model Video {
+  id         String        @id @default(cuid())
+  asset_id   String?
+  public_id  String?
+  url        String
+  secure_url String?
+  post       PropertyPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId     String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 }

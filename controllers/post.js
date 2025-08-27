@@ -1,3 +1,4 @@
+const Video = require("twilio/lib/rest/Video");
 const prisma = require("../config/prisma");
 const { connect } = require("../routers/user");
 const cloudinary = require("../utils/cloudinary");
@@ -35,6 +36,7 @@ exports.createpost = async (req, res) => {
             Other_related_expenses,
             categoryId,
             Interest,
+            floor
         } = req.body
 
         if (!req.session.user) {
@@ -42,7 +44,8 @@ exports.createpost = async (req, res) => {
         }
 
         const userId = req.session.user.id;
-        const files = req.files;
+        const imageFiles = req.files.images || [];
+        const videoFiles = req.files.videos || []
 
         const nearbyLandmarksArray = Array.isArray(Nearby_Landmarks)
             ? Nearby_Landmarks
@@ -84,6 +87,8 @@ exports.createpost = async (req, res) => {
                 Longitude: parseFloat(Longitude),
                 Other_related_expenses,
                 Interest: parseFloat(Interest),
+                floor: parseInt(floor),                      //เพิ่มชั้น
+
                 Category: {
                     connect: {
                         id: categoryId
@@ -95,7 +100,15 @@ exports.createpost = async (req, res) => {
                     }
                 },
                 Image: {
-                    create: files.map((file) => ({
+                    create: imageFiles.map((file) => ({
+                        asset_id: file.asset_id,
+                        public_id: file.public_id,
+                        url: file.path || file.url,
+                        secure_url: file.secure_url || file.path
+                    }))
+                },
+                Video: {
+                    create: videoFiles.map((file) => ({
                         asset_id: file.asset_id,
                         public_id: file.public_id,
                         url: file.path || file.url,
@@ -104,6 +117,7 @@ exports.createpost = async (req, res) => {
                 }
             }, include: {
                 Image: true,
+                Video:true
             }
         })
         res.status(201).json(newPost)
