@@ -117,7 +117,7 @@ exports.createpost = async (req, res) => {
                 }
             }, include: {
                 Image: true,
-                Video:true
+                Video: true
             }
         })
         res.status(201).json(newPost)
@@ -287,12 +287,22 @@ exports.getbycategory = async (req, res) => {
         const { categoryId } = req.params
         const properties = await prisma.propertyPost.findMany({
             where: {
-                categoryId
+                categoryId,
+                Status_post: "CONFIRMED"
             },
-            include: {
-                Image: true,
-                Category: true,
-                user: true
+            select: {
+                id: true,
+                Property_Name: true,
+                Price: true,
+                Province: true,
+                Image: {
+                    take: 1,
+                    select: {
+                        url: true
+                    }
+                }
+            }, orderBy: {
+                createAt: "desc"
             }
         })
         res.json(properties)

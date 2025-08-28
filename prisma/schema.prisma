@@ -165,9 +165,9 @@ model Seller {
   id                 String        @id @default(cuid())
   user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId             String        @unique
-  National_ID        String
-  Company_Name       String
-  RealEstate_License String
+  National_ID        String        @unique
+  Company_Name       String?
+  RealEstate_License String?       @unique
   Status             Status_Seller @default(PENDING)
   StartTime          DateTime?
   isBooked           Boolean       @default(false)

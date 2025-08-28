@@ -11,7 +11,6 @@ exports.preRegister = async (req, res) => {
       Phone,
       First_name,
       Last_name,
-      userType,
     } = req.body;
 
     if (!Email) return res.status(400).json({ message: "Email is required!!" });
@@ -29,11 +28,13 @@ exports.preRegister = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(Password, 10);
     const token = jwt.sign({
-      Email: Email, Password: hashedPassword, Phone, First_name, Last_name, userType
+      Email: Email, Password: hashedPassword, Phone, First_name, Last_name, userType: "Buyer"
     }, process.env.SECRETKEY, { expiresIn: "10m" })
 
-    const link = `http://localhost:5173/verifyemail?token=${token}`
-    console.log("+" + token + "+")
+    const encodedToken = Buffer.from(token).toString('base64');
+    console.log("Test Token:", "+", encodedToken, "+")
+    const link = `http://localhost:5173/verifyemail?token=${encodedToken}`
+
     verifyemail(Email, link)
     // Register Buyer
 
@@ -48,7 +49,7 @@ exports.preRegister = async (req, res) => {
 exports.verifyandregister = async (req, res) => {
   try {
     const {
-      token,
+      token: encodedToken,
       DateofBirth,
       Occupation,
       Monthly_Income,
@@ -64,7 +65,8 @@ exports.verifyandregister = async (req, res) => {
       Lifestyle_Preferences,
       Special_Requirements
     } = req.body
-    const decoded = jwt.verify(token, process.env.SECRETKEY)
+    const originalToken = Buffer.from(encodedToken, 'base64').toString('ascii');
+    const decoded = jwt.verify(originalToken, process.env.SECRETKEY)
     const {
       Email,
       Password,
@@ -74,72 +76,104 @@ exports.verifyandregister = async (req, res) => {
       userType,
     } = decoded
 
-    if (userType === "Buyer") {
-
-      if (!Object.values(ParkingNeedsEnum).includes(Parking_Needs)) {
-        return res.status(400).json({ message: "Invalid Parking_Needs value" });
-      }
-
-      if (!Object.values(NearbyFacilitiesEnum).includes(Nearby_Facilities)) {
-        return res.status(400).json({ message: "Invalid Nearby_Facilities value" });
-      }
-
-      if (!Object.values(LifestylePreferencesEnum).includes(Lifestyle_Preferences)) {
-        return res.status(400).json({ message: "Invalid Lifestyle_Preferences value" });
-      }
-
-      await prisma.user.create({
-        data: {
-          Email: Email,
-          Password: Password,
-          Phone: Phone,
-          First_name: First_name,
-          Last_name: Last_name,
-          userType: "Buyer",
-          Buyer: {
-            create: {
-              DateofBirth: DateofBirth ? new Date(DateofBirth) : null,
-              Occupation: Occupation,
-              Monthly_Income: Monthly_Income ? Number(Monthly_Income) : null,
-              Family_Size: Family_Size ? Number(Family_Size) : null,
-              Preferred_Province: Preferred_Province,
-              Preferred_District: Preferred_District,
-              Parking_Needs: Parking_Needs,
-              Nearby_Facilities: Nearby_Facilities,
-              Lifestyle_Preferences: Lifestyle_Preferences,
-              Special_Requirements: Special_Requirements
-            }
+    if (!Object.values(ParkingNeedsEnum).includes(Parking_Needs)) {
+      return res.status(400).json({ message: "Invalid Parking_Needs value" });
+    }
+    if (!Object.values(NearbyFacilitiesEnum).includes(Nearby_Facilities)) {
+      return res.status(400).json({ message: "Invalid Nearby_Facilities value" });
+    }
+    if (!Object.values(LifestylePreferencesEnum).includes(Lifestyle_Preferences)) {
+      return res.status(400).json({ message: "Invalid Lifestyle_Preferences value" });
+    }
+    await prisma.user.create({
+      data: {
+        Email: Email,
+        Password: Password,
+        Phone: Phone,
+        First_name: First_name,
+        Last_name: Last_name,
+        userType: "Buyer",
+        Buyer: {
+          create: {
+            DateofBirth: DateofBirth ? new Date(DateofBirth) : null,
+            Occupation: Occupation,
+            Monthly_Income: Monthly_Income ? Number(Monthly_Income) : null,
+            Family_Size: Family_Size ? Number(Family_Size) : null,
+            Preferred_Province: Preferred_Province,
+            Preferred_District: Preferred_District,
+            Parking_Needs: Parking_Needs,
+            Nearby_Facilities: Nearby_Facilities,
+            Lifestyle_Preferences: Lifestyle_Preferences,
+            Special_Requirements: Special_Requirements
           }
         }
-      });
+      }
+    });
+    // if (userType === "Buyer") {
 
-      return res.json({ message: "Register Buyer success" });
-    }
+    //   if (!Object.values(ParkingNeedsEnum).includes(Parking_Needs)) {
+    //     return res.status(400).json({ message: "Invalid Parking_Needs value" });
+    //   }
 
-    // Register Seller
-    if (userType === "Seller") {
-      await prisma.user.create({
-        data: {
-          Email: Email,
-          Password: Password,
-          Phone: Phone,
-          First_name: First_name,
-          Last_name: Last_name,
-          userType: "Seller",
-          Seller: {
-            create: {
-              National_ID: National_ID,
-              Company_Name: Company_Name,
-              RealEstate_License: RealEstate_License,
-              Status: Status,
-              StartTime: new Date(),
-            }
-          }
-        }
-      });
+    //   if (!Object.values(NearbyFacilitiesEnum).includes(Nearby_Facilities)) {
+    //     return res.status(400).json({ message: "Invalid Nearby_Facilities value" });
+    //   }
 
-      return res.send("Register sucess")
-    }
+    //   if (!Object.values(LifestylePreferencesEnum).includes(Lifestyle_Preferences)) {
+    //     return res.status(400).json({ message: "Invalid Lifestyle_Preferences value" });
+    //   }
+
+    //   await prisma.user.create({
+    //     data: {
+    //       Email: Email,
+    //       Password: Password,
+    //       Phone: Phone,
+    //       First_name: First_name,
+    //       Last_name: Last_name,
+    //       userType: "Buyer",
+    //       Buyer: {
+    //         create: {
+    //           DateofBirth: DateofBirth ? new Date(DateofBirth) : null,
+    //           Occupation: Occupation,
+    //           Monthly_Income: Monthly_Income ? Number(Monthly_Income) : null,
+    //           Family_Size: Family_Size ? Number(Family_Size) : null,
+    //           Preferred_Province: Preferred_Province,
+    //           Preferred_District: Preferred_District,
+    //           Parking_Needs: Parking_Needs,
+    //           Nearby_Facilities: Nearby_Facilities,
+    //           Lifestyle_Preferences: Lifestyle_Preferences,
+    //           Special_Requirements: Special_Requirements
+    //         }
+    //       }
+    //     }
+    //   });
+
+    //   return res.json({ message: "Register Buyer success" });
+    // }
+
+    // // Register Seller
+    // if (userType === "Seller") {
+    //   await prisma.user.create({
+    //     data: {
+    //       Email: Email,
+    //       Password: Password,
+    //       Phone: Phone,
+    //       First_name: First_name,
+    //       Last_name: Last_name,
+    //       userType: "Seller",
+    //       Seller: {
+    //         create: {
+    //           National_ID: National_ID,
+    //           Company_Name: Company_Name,
+    //           RealEstate_License: RealEstate_License,
+    //           Status: Status,
+    //           StartTime: new Date(),
+    //         }
+    //       }
+    //     }
+    //   });
+
+    return res.send("Register sucess")
   } catch (err) {
     console.log(err)
     res.status(500).json({
@@ -147,6 +181,7 @@ exports.verifyandregister = async (req, res) => {
     })
   }
 }
+
 exports.login = async (req, res) => {
   try {
     const { Email, Password } = req.body;
@@ -222,9 +257,9 @@ exports.login = async (req, res) => {
         return res.status(500).json({ message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ" });
       }
 
-      
+
       console.log("Login successful, session created for user:", req.session.user.id);
-      
+
       res.status(200).json({
         message: "Login Sucess",
         user: req.session.user
@@ -314,7 +349,7 @@ exports.getProfile = async (req, res) => {
     // query database ใหม่
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { Seller: true,Buyer:true } // include seller info
+      include: { Seller: true, Buyer: true } // include seller info
     });
 
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -347,3 +382,76 @@ exports.logout = (req, res) => {
     console.log("Catch error:", err)
   }
 };
+exports.registerSeller = async (req, res) => {
+  try {
+    const userId = req.session.user.id
+    console.log("UserID:",userId)
+    if (!userId) {
+      return res.status(401).json({
+        message: "Unauthorized. Please log in."
+      })
+    }
+    const { National_ID, Company_Name, RealEstate_License } = req.body;
+    if (!National_ID || !Company_Name || !RealEstate_License) {
+      return res.status(400).json({ message: "All fields are required." });
+    }
+
+    // --- START: New Uniqueness Check ---
+    const existingSeller = await prisma.seller.findFirst({
+      where: {
+        OR: [
+          { National_ID: National_ID },
+          { RealEstate_License: RealEstate_License },
+        ],
+      },
+    });
+
+    if (existingSeller) {
+      let errorMessage = "Registration failed. ";
+      if (existingSeller.National_ID === National_ID) {
+        errorMessage += "This National ID is already registered.";
+      } else {
+        errorMessage += "This Real Estate License is already registered.";
+      }
+      return res.status(400).json({ message: errorMessage });
+    }
+    // --- END: New Uniqueness Check ---
+
+    const userAlreadySeller = await prisma.seller.findUnique({
+      where: { userId: userId },
+    });
+
+    if (userAlreadySeller) {
+      return res
+        .status(400)
+        .json({ message: "This user is already registered as a seller." });
+    }
+
+    // Create the new seller profile
+    const newSeller = await prisma.seller.create({
+      data: {
+        userId: userId,
+        National_ID: National_ID,
+        Company_Name: Company_Name,
+        RealEstate_License: RealEstate_License,
+        Status: "PENDING",
+      },
+    });
+    await prisma.user.update({
+      where:{
+        id:userId
+      },
+      data:{
+        userType:"Seller"
+      }
+    })
+
+    res.status(201).json({
+      message: "Seller registration successful! Your application is pending review.",
+      seller: newSeller,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+}

@@ -434,6 +434,8 @@ exports.useruploadDocument = async (req, res) => {
       })
     }
     const userId = loggedInUser.id;
+    
+    
     const {typeId,DocumentName,postId} = req.body
     // const {id} = req.params
     const file = req.file;
@@ -477,7 +479,7 @@ exports.useruploadDocument = async (req, res) => {
       data: {
         userId: post.userId,
         Title: "มีเอกสารใหม่สำหรับตรวจสอบมัดจำ",
-        Message: "มีเอกสารถูกอัปโหลด",
+        Message: `เอกสารมัดจำจาก:${loggedInUser.First_name} ${loggedInUser.Last_name}`,
         Status: "UNREAD",
         relatedProcess: "DOCUMENT_UPLOAD",
         referenceId: document.id,
