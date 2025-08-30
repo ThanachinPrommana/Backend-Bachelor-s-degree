@@ -1,10 +1,11 @@
 // const prisma = require("@prisma/client")
 const { include } = require("params")
 const prisma = require("../config/prisma")
+//complete
 exports.approveDocument = async (req, res) => {
     try {
         const userId = req.session.user
-        
+
         if (!userId) {
             res.status(403).json({
                 message: "Forbidden: Only sellers can approve documents."
@@ -47,7 +48,7 @@ exports.approveDocument = async (req, res) => {
                 }
             }
         })
-        
+
 
 
         await prisma.notification.create({
@@ -72,18 +73,98 @@ exports.approveDocument = async (req, res) => {
         });
     }
 }
+//complete
 exports.getDocument = async (req, res) => {
     try {
-        const { postId } = req.query
-        if (req.user.userType === "Buyer") { }
+        const userId = req.session.user.id
+        if (!userId) {
+            return res.status(401).json({ message: "Unauthorized. Please log in." });
+        }
+        const Document = await prisma.documentUpload.findMany({
+            where: {
+                userId: userId
+            },
+            select: {
+                id: true,
+                DocumentName: true,
+                Review_Status: true,
+                DocumentUrl: true
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        })
+        res.json(Document)
     } catch (err) {
-
+        console.log(err)
+        res.status(500).json({
+            message: "Server Error"
+        })
     }
 }
-exports.queryDocument = async (req, res) => {
+//complete
+const handlequeryDoc = async (req, res, query) => {
     try {
+        // 1. กำหนดค่าสถานะที่เป็นไปได้ทั้งหมด (ควรตรงกับใน schema.prisma)
+        const validStatuses = ["PENDING", "APPROVED", "REJECTED"]; 
+
+        // 2. สร้างเงื่อนไข where clause พื้นฐาน
+        const whereClause = {
+            OR: [
+                {
+                    DocumentName: {
+                        contains: query,
+                        mode: "insensitive"
+                    }
+                }
+            ]
+        };
+
+        // 3. ตรวจสอบว่า query ที่รับมาเป็นหนึ่งในสถานะที่ถูกต้องหรือไม่
+        
+        if (validStatuses.includes(query.toUpperCase())) {
+            
+            whereClause.OR.push({
+                Review_Status: {
+                    equals: query.toUpperCase() 
+                }
+            });
+        }
+
+        
+        const doc = await prisma.documentUpload.findMany({
+            where: whereClause, 
+            select: {
+                id: true,
+                DocumentName: true,
+                Review_Status: true,
+                DocumentUrl: true
+            }
+        });
+
+        res.json({ doc });
 
     } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: "Server Error" });
+    }
+}
+//complete
+exports.searchDocument = async (req, res) => {
+    try {
+        if (!req.session.user || !req.session.user.id) {
+            return res.status(401).json({ message: "Unauthorized. Please log in." });
+        }
+        const { q } = req.body
+        console.log("q:", q)
+        if (q) {
+            await handlequeryDoc(req, res, q);
+        } else {
+            return res.json([]);
+        }
 
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: "Server Error" });
     }
 }

@@ -205,6 +205,7 @@ exports.getUserProfile = async (req, res) => {
     })
   }
 }
+//complete
 exports.updateSeller = async (req, res) => {
   try {
     const { id } = req.session.user
@@ -267,6 +268,7 @@ exports.updateSeller = async (req, res) => {
     })
   }
 }
+//complete
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.session.user
@@ -346,7 +348,7 @@ exports.updateUser = async (req, res) => {
     });
   }
 };
-
+//complete
 exports.updateimage = async (req, res) => {
   try {
     const { id } = req.session.user;
@@ -425,6 +427,7 @@ exports.userdeposit = async (req, res) => {
     })
   }
 }
+//complete
 exports.useruploadDocument = async (req, res) => {
   try {
     const loggedInUser = req.session.user
@@ -434,9 +437,9 @@ exports.useruploadDocument = async (req, res) => {
       })
     }
     const userId = loggedInUser.id;
-    
-    
-    const {typeId,DocumentName,postId} = req.body
+
+
+    const { typeId, DocumentName, postId } = req.body
     // const {id} = req.params
     const file = req.file;
     if (!file) {
@@ -456,7 +459,7 @@ exports.useruploadDocument = async (req, res) => {
     // console.log("Resource Type:", resourceType);
     const document = await prisma.documentUpload.create({
       data: {
-        userId:userId,
+        userId: userId,
         typeId,
         DocumentName,
         DocumentUrl: documentUrl,
@@ -487,7 +490,7 @@ exports.useruploadDocument = async (req, res) => {
     });
     await prisma.notification.create({
       data: {
-        userId:userId,
+        userId: userId,
         Title: "เอกสารถูกส่งไปยังผู้ขาย",
         Message: "รออนุมัติ",
         Status: "UNREAD",
@@ -526,6 +529,7 @@ exports.getdeposits = async (req, res) => {
     })
   }
 }
+//complete
 exports.getpostBySeller = async (req, res) => {
   try {
     const userFromSession = req.session.user
@@ -561,6 +565,40 @@ exports.getpostBySeller = async (req, res) => {
     })
   }
 }
+exports.deletePostBySeller = async (req, res) => {
+  try {
+    const { postId } = req.params
+    const userId = req.session.user?.id
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized. Please log in." });
+    }
+    const postToDelete = await prisma.propertyPost.findUnique({
+      where: {
+        id: postId,
+      },
+    });
+
+    if (!postToDelete) {
+      return res.status(404).json({ message: "Post not found." });
+    }
+    if (postToDelete.userId !== userId) {
+      return res.status(403).json({ message: "Forbidden. You are not the owner of this post." });
+    }
+    await prisma.propertyPost.delete({
+      where: {
+        id: postId
+      }
+    })
+    res.status(200).json({ message: "Delete Success" });
+
+  } catch (err) {
+    console.log(err)
+    res.status(500).json({
+      message: "Server Error"
+    })
+  }
+}
+
 
 
 

@@ -285,6 +285,7 @@ exports.searchFilters = async (req, res) => {
 exports.getbycategory = async (req, res) => {
     try {
         const { categoryId } = req.params
+        console.log("ID:",categoryId)
         const properties = await prisma.propertyPost.findMany({
             where: {
                 categoryId,
@@ -301,8 +302,6 @@ exports.getbycategory = async (req, res) => {
                         url: true
                     }
                 }
-            }, orderBy: {
-                createAt: "desc"
             }
         })
         res.json(properties)
@@ -378,6 +377,7 @@ exports.getPost = async (req, res) => {
         })
     }
 }
+//removeByAdmin
 exports.removepost = async (req, res) => {
     try {
         const { id } = req.params;
@@ -500,6 +500,29 @@ exports.updatePost = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: "Server Error" });
+    }
+};
+
+exports.getallcategory = async (req, res) => {
+    try {
+        // Use Prisma's findMany to get all records from the Category table
+        const categories = await prisma.propertyPost.findMany({
+            where:{
+
+            }
+        })
+
+        // Send the array of categories back to the client with a 200 OK status
+        res.status(200).json(categories);
+
+    } catch (err) {
+        // Log the error to the console for debugging
+        console.error("Error in getallcategory:", err);
+
+        // Send a generic 500 Internal Server Error response
+        res.status(500).json({
+            message: "Failed to retrieve categories."
+        });
     }
 };
 

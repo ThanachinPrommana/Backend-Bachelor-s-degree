@@ -9,7 +9,8 @@ const {
     getPost,
     removepost,
     updatePost,
-    searchFilters
+    searchFilters,
+    getallcategory
 }
     = require("../controllers/post")
 const { isAuthenticated } = require("../Middlewares/authCheck")
@@ -21,6 +22,7 @@ router.post("/propertypost", isAuthenticated, propertyUpload.fields([
 
 router.get("/post/category/:categoryId", getbycategory)
 router.get("/propertypost/:id", getPost)
+router.get("/allcategory",getallcategory)
 
 router.delete("/propertypost/:id", removepost)
 router.patch("/propertypost/:id", propertyUpload.fields([

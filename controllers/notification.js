@@ -1,4 +1,5 @@
 const prisma = require("../config/prisma")
+//complete
 exports.getuserNotifications = async (req, res) => {
     try {
         const { userId } = req.session.user
@@ -10,7 +11,6 @@ exports.getuserNotifications = async (req, res) => {
                 userId: userId,
                 relatedProcess: "DOCUMENT_UPLOAD"
             },
-
         })
         res.json({
             message: "success",
