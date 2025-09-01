@@ -134,7 +134,7 @@ model User {
   Payment            Payment[]
   Contract           Contract[]
   Notification       Notification[]
-  PasswordResetToken PasswordResetToken[]
+  PasswordResetToken   PasswordResetToken[]
   image              String?
   publicId           String?
   Deposit            Deposit[]
@@ -227,7 +227,7 @@ model PropertyPost {
   Parking_Space          Int?
   Sell_Rent              Sell_Rent
   Other_related_expenses String?
-  Link_line              String?
+  Link_line              String?  
   Link_facbook           String?
   Name                   String?
   Phone                  String

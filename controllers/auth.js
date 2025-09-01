@@ -349,7 +349,11 @@ exports.getProfile = async (req, res) => {
     // query database ใหม่
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { Seller: true, Buyer: true } // include seller info
+      include: { Seller: true, Buyer: true,PropertyPost:{
+        include:{
+          Image:true
+        }
+      } } // include seller info
     });
 
     if (!user) return res.status(404).json({ message: "User not found" });

@@ -205,7 +205,7 @@ exports.getUserProfile = async (req, res) => {
     })
   }
 }
-//complete
+//แก้ update ผู้ซื้อด้วย
 exports.updateSeller = async (req, res) => {
   try {
     const { id } = req.session.user
@@ -529,7 +529,7 @@ exports.getdeposits = async (req, res) => {
     })
   }
 }
-//complete
+//complete ยังไม่ใช้
 exports.getpostBySeller = async (req, res) => {
   try {
     const userFromSession = req.session.user
@@ -549,9 +549,13 @@ exports.getpostBySeller = async (req, res) => {
         Address: true,
         Province: true,
         District: true,
-        Image: true,
-        Category: true,
-
+        Image: {
+          take: 1,
+          select: {
+            url: true
+          }
+        },
+        Category: true
       }
     })
     res.json({
@@ -565,6 +569,8 @@ exports.getpostBySeller = async (req, res) => {
     })
   }
 }
+
+
 exports.deletePostBySeller = async (req, res) => {
   try {
     const { postId } = req.params
@@ -584,11 +590,28 @@ exports.deletePostBySeller = async (req, res) => {
     if (postToDelete.userId !== userId) {
       return res.status(403).json({ message: "Forbidden. You are not the owner of this post." });
     }
-    await prisma.propertyPost.delete({
-      where: {
-        id: postId
-      }
-    })
+    // --- Start Transaction ---
+    // ใช้ transaction เพื่อลบข้อมูลที่เกี่ยวข้องกันทั้งหมด
+    await prisma.$transaction([
+      // 1. ลบรูปภาพทั้งหมดที่เชื่อมกับ postId นี้
+      prisma.image.deleteMany({
+        where: {
+          propertyPostId: postId,
+        },
+      }),
+      // 2. ลบวิดีโอทั้งหมดที่เชื่อมกับ postId นี้
+      prisma.video.deleteMany({
+        where: {
+          postId: postId,
+        },
+      }),
+      // 3. ลบตัวโพสต์หลัก
+      prisma.propertyPost.delete({
+        where: {
+          id: postId,
+        },
+      }),
+    ]);
     res.status(200).json({ message: "Delete Success" });
 
   } catch (err) {
@@ -598,6 +621,56 @@ exports.deletePostBySeller = async (req, res) => {
     })
   }
 }
+
+exports.searchFiltersSeller = async (req, res) => {
+  try {
+    // 1. ดึงข้อมูล user จาก session
+    const user = req.session.user;
+    if (!user || !user.id) {
+      
+      return res.status(401).json({ success: false, message: 'กรุณาเข้าสู่ระบบก่อน' });
+    }
+
+    // 2. ดึงคำค้นหา (query) จาก URL query string (เช่น /path?q=บ้าน)
+    const { q } = req.query;
+
+    // 3. สร้างเงื่อนไขพื้นฐาน: ต้องเป็นโพสต์ของ user คนนี้เท่านั้น
+    const whereClause = {
+      userId: user.id,
+    };
+
+    if (q) {
+      whereClause.OR = [
+        { Property_Name: { contains: q, mode: "insensitive" } },
+        { Year_Built: { contains: q, mode: "insensitive" } },
+        { Description: { contains: q, mode: "insensitive" } },
+        { Address: { contains: q, mode: "insensitive" } },
+        { Province: { contains: q, mode: "insensitive" } },
+        { District: { contains: q, mode: "insensitive" } },
+        { Subdistrict: { contains: q, mode: "insensitive" } },
+      ];
+    }
+
+    // 5. ค้นหาข้อมูลด้วยเงื่อนไขที่สร้างขึ้น และดึงข้อมูลที่เกี่ยวข้องมาด้วย
+    const posts = await prisma.propertyPost.findMany({
+      where: whereClause,
+      include: {
+        Category: true,
+        Image: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      }
+    });
+
+    // 6. ส่งผลลัพธ์กลับไป
+    res.status(200).json({ success: true, count: posts.length, data: posts });
+
+  } catch (err) {
+    console.error("Error in searchFiltersSeller:", err);
+    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' });
+  }
+};
 
 
 

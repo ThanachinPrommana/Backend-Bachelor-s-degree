@@ -13,7 +13,8 @@ const {
     getpostBySeller,
     userdeposit,
     getdeposits,
-    useruploadDocument
+    useruploadDocument,
+    searchFiltersSeller
 } = require("../controllers/user")
 const upload = require("../Middlewares/upload")
 const uploadDocument = require("../Middlewares/document")
@@ -23,7 +24,11 @@ const {isAuthenticated} = require("../Middlewares/authCheck")
 router.put("/user/:id", updateStatusSeller)
 router.post("/user/:id", deleteUser)
 router.get("/userSeller", listUserSeller)
+router.get("/search/post/seller",isAuthenticated,searchFiltersSeller)
+
+//ยังไม่ใช้ตอนนี้
 router.get("/profileseller/:id",getSellerProfile)
+
 router.patch("/profileseller",isAuthenticated,updateSeller)
 router.get("/post/seller",isAuthenticated,getpostBySeller)
 
