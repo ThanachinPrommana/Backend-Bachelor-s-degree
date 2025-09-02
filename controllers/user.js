@@ -208,67 +208,91 @@ exports.getUserProfile = async (req, res) => {
 //แก้ update ผู้ซื้อด้วย
 exports.updateSeller = async (req, res) => {
   try {
-    const { id } = req.session.user
+    const { id } = req.session.user;
     if (!id) {
       return res.status(401).json({
         message: "Unauthorized: Please log in to update your profile."
       });
     }
-    const {
-      First_name,
-      Last_name,
-      Email,
-      Phone,
-      National_ID,
-      Company_Name,
-      RealEstate_License,
-      image
-    } = req.body
 
-    const dataToupdate = {}
-    if (First_name !== undefined) dataToupdate.First_name = First_name
-    if (Last_name !== undefined) dataToupdate.Last_name = Last_name
-    if (Email !== undefined) dataToupdate.Email = Email
-    if (Phone !== undefined) dataToupdate.Phone = Phone
-    if (image !== undefined) dataToupdate.image = image
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const {
+        First_name, Last_name, Phone, image, // User fields (Email ถูกนำออก)
+        National_ID, Company_Name, RealEstate_License, // Seller fields
+        DateofBirth, Occupation, Monthly_Income, Preferred_Province, Preferred_District // Buyer fields
+      } = req.body;
 
-    const sellerDataToupdate = {}
-
-    if (National_ID !== undefined) sellerDataToupdate.National_ID = National_ID
-    if (Company_Name !== undefined) sellerDataToupdate.Company_Name = Company_Name
-    if (RealEstate_License !== undefined) sellerDataToupdate.RealEstate_License = RealEstate_License
-
-    if (Object.keys(sellerDataToupdate).length > 0) {
-      dataToupdate.Seller = {
-        update: sellerDataToupdate
+      // Uniqueness Validation (นำส่วนเช็ค Email ออก)
+      if (National_ID) {
+        const existingSeller = await tx.seller.findFirst({
+          where: { National_ID, userId: { not: id } }
+        });
+        if (existingSeller) throw new Error("This National ID is already in use.");
       }
-    }
 
-    const Updateseller = await prisma.user.update({
-      where: {
-        id
-      },
-      data: dataToupdate,
-      include: {
-        Seller: true
+      const userDataToUpdate = {};
+      const sellerDataToUpdate = {};
+      const buyerDataToUpdate = {};
+
+      // กำหนด field ที่อนุญาต (นำ 'Email' ออกจาก Array)
+      const allowedUserFields = ['First_name', 'Last_name', 'Phone', 'image'];
+      const allowedSellerFields = ['National_ID', 'Company_Name', 'RealEstate_License'];
+      const allowedBuyerFields = ['DateofBirth', 'Occupation', 'Monthly_Income', 'Preferred_Province', 'Preferred_District'];
+
+      allowedUserFields.forEach(field => {
+        if (req.body[field] !== undefined) userDataToUpdate[field] = req.body[field];
+      });
+      allowedSellerFields.forEach(field => {
+        if (req.body[field] !== undefined) sellerDataToUpdate[field] = req.body[field];
+      });
+      allowedBuyerFields.forEach(field => {
+        if (req.body[field] !== undefined) {
+          let value = req.body[field];
+          if (field === 'DateofBirth') value = new Date(value);
+          if (field === 'Monthly_Income') value = parseFloat(value);
+          buyerDataToUpdate[field] = value;
+        }
+      });
+
+      if (Object.keys(sellerDataToUpdate).length > 0) {
+        userDataToUpdate.Seller = {
+          update: sellerDataToUpdate
+        };
       }
-    })
-    if (Updateseller.Password) {
-      delete Updateseller.Password
-    }
-    req.session.user = Updateseller
+      if (Object.keys(buyerDataToUpdate).length > 0) {
+        userDataToUpdate.Buyer = {
+          update: buyerDataToUpdate
+        };
+      }
+
+      const user = await tx.user.update({
+        where: { id },
+        data: userDataToUpdate,
+        include: {
+          Seller: true,
+          Buyer: true
+        }
+      });
+
+      return user;
+    });
+
+    delete updatedUser.Password;
+    req.session.user = updatedUser;
+
     res.json({
-      message: "Seller Updated Successfully",
-      user: Updateseller
-    })
+      message: "User profile updated successfully",
+      user: updatedUser
+    });
+
   } catch (err) {
-    console.log(err)
-    res.status(500).json({
-      message: "Server Error"
-    })
+    console.log(err);
+    res.status(err.message.includes("in use") ? 400 : 500).json({
+      message: err.message || "Server Error"
+    });
   }
-}
-//complete
+};
+//complete ลบ email
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.session.user
@@ -280,7 +304,6 @@ exports.updateUser = async (req, res) => {
     const {
       First_name,
       Last_name,
-      Email,
       Phone,
       DateofBirth,
       Occupation,
@@ -299,7 +322,7 @@ exports.updateUser = async (req, res) => {
     const dataToUpdate = {};
     if (First_name !== undefined) dataToUpdate.First_name = First_name;
     if (Last_name !== undefined) dataToUpdate.Last_name = Last_name;
-    if (Email !== undefined) dataToUpdate.Email = Email;
+    // if (Email !== undefined) dataToUpdate.Email = Email;
     if (Phone !== undefined) dataToUpdate.Phone = Phone;
     if (image !== undefined) dataToUpdate.image = image;
 
@@ -307,11 +330,11 @@ exports.updateUser = async (req, res) => {
     if (DateofBirth !== undefined) buyerDataToUpdate.DateofBirth = new Date(DateofBirth);
     if (Occupation !== undefined) buyerDataToUpdate.Occupation = Occupation;
     if (Monthly_Income !== undefined) buyerDataToUpdate.Monthly_Income = Monthly_Income;
-    if (Family_Size !== undefined) buyerDataToUpdate.Family_Size = Family_Size;
-    if (Parking_Needs !== undefined) buyerDataToUpdate.Parking_Needs = Parking_Needs;
-    if (Nearby_Facilities !== undefined) buyerDataToUpdate.Nearby_Facilities = Nearby_Facilities;
-    if (Lifestyle_Preferences !== undefined) buyerDataToUpdate.Lifestyle_Preferences = Lifestyle_Preferences;
-    if (Special_Requirements !== undefined) buyerDataToUpdate.Special_Requirements = Special_Requirements;
+    // if (Family_Size !== undefined) buyerDataToUpdate.Family_Size = Family_Size;
+    // if (Parking_Needs !== undefined) buyerDataToUpdate.Parking_Needs = Parking_Needs;
+    // if (Nearby_Facilities !== undefined) buyerDataToUpdate.Nearby_Facilities = Nearby_Facilities;
+    // if (Lifestyle_Preferences !== undefined) buyerDataToUpdate.Lifestyle_Preferences = Lifestyle_Preferences;
+    // if (Special_Requirements !== undefined) buyerDataToUpdate.Special_Requirements = Special_Requirements;
     if (Preferred_Province !== undefined) buyerDataToUpdate.Preferred_Province = Preferred_Province;
     if (Preferred_District !== undefined) buyerDataToUpdate.Preferred_District = Preferred_District;
     // ถ้ามีข้อมูล Buyer ต้องการอัปเดต
@@ -627,7 +650,7 @@ exports.searchFiltersSeller = async (req, res) => {
     // 1. ดึงข้อมูล user จาก session
     const user = req.session.user;
     if (!user || !user.id) {
-      
+
       return res.status(401).json({ success: false, message: 'กรุณาเข้าสู่ระบบก่อน' });
     }
 

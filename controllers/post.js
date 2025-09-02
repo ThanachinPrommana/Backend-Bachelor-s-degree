@@ -434,6 +434,7 @@ exports.removepost = async (req, res) => {
         res.status(500).json({ message: "Server error" });
     }
 }
+//แก้ไขให้ updatePost ของ seller นั้นๆ
 exports.updatePost = async (req, res) => {
     try {
         const { id } = req.params;
