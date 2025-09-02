@@ -205,7 +205,7 @@ exports.getUserProfile = async (req, res) => {
     })
   }
 }
-//แก้ update ผู้ซื้อด้วย
+//complete
 exports.updateSeller = async (req, res) => {
   try {
     const { id } = req.session.user;
@@ -217,7 +217,7 @@ exports.updateSeller = async (req, res) => {
 
     const updatedUser = await prisma.$transaction(async (tx) => {
       const {
-        First_name, Last_name, Phone, image, // User fields (Email ถูกนำออก)
+        First_name, Last_name, Phone,// User fields (Email ถูกนำออก)
         National_ID, Company_Name, RealEstate_License, // Seller fields
         DateofBirth, Occupation, Monthly_Income, Preferred_Province, Preferred_District // Buyer fields
       } = req.body;
@@ -235,7 +235,7 @@ exports.updateSeller = async (req, res) => {
       const buyerDataToUpdate = {};
 
       // กำหนด field ที่อนุญาต (นำ 'Email' ออกจาก Array)
-      const allowedUserFields = ['First_name', 'Last_name', 'Phone', 'image'];
+      const allowedUserFields = ['First_name', 'Last_name', 'Phone'];
       const allowedSellerFields = ['National_ID', 'Company_Name', 'RealEstate_License'];
       const allowedBuyerFields = ['DateofBirth', 'Occupation', 'Monthly_Income', 'Preferred_Province', 'Preferred_District'];
 
@@ -275,7 +275,11 @@ exports.updateSeller = async (req, res) => {
       });
 
       return user;
-    });
+    },
+      {
+        timeout: 10000
+      }
+    );
 
     delete updatedUser.Password;
     req.session.user = updatedUser;
@@ -358,7 +362,7 @@ exports.updateUser = async (req, res) => {
       delete Updateuser.Password;
     }
     req.session.user = Updateuser
-
+  
     res.json({
       message: "User update success",
       user: Updateuser

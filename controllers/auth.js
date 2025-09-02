@@ -349,11 +349,13 @@ exports.getProfile = async (req, res) => {
     // query database ใหม่
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { Seller: true, Buyer: true,PropertyPost:{
-        include:{
-          Image:true
+      include: {
+        Seller: true, Buyer: true, PropertyPost: {
+          include: {
+            Image: true
+          }
         }
-      } } // include seller info
+      } // include seller info
     });
 
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -386,76 +388,76 @@ exports.logout = (req, res) => {
     console.log("Catch error:", err)
   }
 };
+
 exports.registerSeller = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: "กรุณาแนบรูปภาพบัตรประชาชน" });
+  }
+
+  const userId = req.session.user.id;
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized. Please log in." });
+  }
+
+  const { National_ID, Company_Name, RealEstate_License } = req.body;
+  if (!National_ID) {
+    return res.status(400).json({ message: "กรุณากรอกข้อมูลบัตรประชาชน" });
+  }
+
   try {
-    const userId = req.session.user.id
-    console.log("UserID:",userId)
-    if (!userId) {
-      return res.status(401).json({
-        message: "Unauthorized. Please log in."
-      })
-    }
-    const { National_ID, Company_Name, RealEstate_License } = req.body;
-    if (!National_ID || !Company_Name || !RealEstate_License) {
-      return res.status(400).json({ message: "All fields are required." });
-    }
+    // 2. ดึงข้อมูล URL และ publicId จาก req.file ที่ Cloudinary สร้างให้
+    const nationalIdImageUrl = req.file.path;
+    const nationalIdPublicId = req.file.filename;
 
-    // --- START: New Uniqueness Check ---
-    const existingSeller = await prisma.seller.findFirst({
-      where: {
-        OR: [
-          { National_ID: National_ID },
-          { RealEstate_License: RealEstate_License },
-        ],
-      },
-    });
-
-    if (existingSeller) {
-      let errorMessage = "Registration failed. ";
-      if (existingSeller.National_ID === National_ID) {
-        errorMessage += "This National ID is already registered.";
-      } else {
-        errorMessage += "This Real Estate License is already registered.";
+    const result = await prisma.$transaction(async (tx) => {
+      // ตรวจสอบข้อมูลซ้ำ
+      const existingSeller = await tx.seller.findFirst({
+        where: {
+          OR: [
+            { National_ID },
+            { RealEstate_License },
+            { userId }
+          ]
+        }
+      });
+      if (existingSeller) {
+        if (existingSeller.userId === userId) throw new Error("This user is already registered as a seller.");
+        if (existingSeller.National_ID === National_ID) throw new Error("This National ID is already registered.");
+        throw new Error("This Real Estate License is already registered.");
       }
-      return res.status(400).json({ message: errorMessage });
-    }
-    // --- END: New Uniqueness Check ---
 
-    const userAlreadySeller = await prisma.seller.findUnique({
-      where: { userId: userId },
+      // 3. สร้าง Seller พร้อมข้อมูลรูปบัตรประชาชน
+      const newSeller = await tx.seller.create({
+        data: {
+          userId: userId,
+          National_ID: National_ID,
+          Company_Name: Company_Name,
+          RealEstate_License: RealEstate_License,
+          Status: "PENDING",
+          nationalIdImage: nationalIdImageUrl, // บันทึก URL
+          publicId: nationalIdPublicId        // บันทึก Public ID
+        },
+      });
+
+      // 4. อัปเดต userType
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          userType: "Seller",
+        },
+      });
+
+      return newSeller;
     });
-
-    if (userAlreadySeller) {
-      return res
-        .status(400)
-        .json({ message: "This user is already registered as a seller." });
-    }
-
-    // Create the new seller profile
-    const newSeller = await prisma.seller.create({
-      data: {
-        userId: userId,
-        National_ID: National_ID,
-        Company_Name: Company_Name,
-        RealEstate_License: RealEstate_License,
-        Status: "PENDING",
-      },
-    });
-    await prisma.user.update({
-      where:{
-        id:userId
-      },
-      data:{
-        userType:"Seller"
-      }
-    })
 
     res.status(201).json({
       message: "Seller registration successful! Your application is pending review.",
-      seller: newSeller,
+      seller: result,
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    // กรณีนี้ควรลบรูปที่อัปโหลดไปแล้วออกจาก Cloudinary ด้วยจะดีที่สุด
+    // (เป็น advance logic ที่สามารถเพิ่มทีหลังได้)
+    res.status(400).json({ message: err.message || "Server error" });
   }
 }

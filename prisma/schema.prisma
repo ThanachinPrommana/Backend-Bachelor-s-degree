@@ -134,7 +134,7 @@ model User {
   Payment            Payment[]
   Contract           Contract[]
   Notification       Notification[]
-  PasswordResetToken   PasswordResetToken[]
+  PasswordResetToken PasswordResetToken[]
   image              String?
   publicId           String?
   Deposit            Deposit[]
@@ -171,6 +171,8 @@ model Seller {
   Status             Status_Seller @default(PENDING)
   StartTime          DateTime?
   isBooked           Boolean       @default(false)
+  nationalIdImage    String?
+  publicId           String?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   Negotiation        Negotiation[]
@@ -227,7 +229,7 @@ model PropertyPost {
   Parking_Space          Int?
   Sell_Rent              Sell_Rent
   Other_related_expenses String?
-  Link_line              String?  
+  Link_line              String?
   Link_facbook           String?
   Name                   String?
   Phone                  String

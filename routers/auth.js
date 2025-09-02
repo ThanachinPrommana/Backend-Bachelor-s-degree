@@ -10,18 +10,18 @@ const {
     logout,
     registerSeller
 } = require("../controllers/auth")
-const {isAuthenticated} = require("../Middlewares/authCheck")
- 
+const { isAuthenticated } = require("../Middlewares/authCheck")
+const uploadNationalId = require("../Middlewares/uploadNationalIdImage")
 
 router.post("/preRegister", preRegister)
 router.post("/verifyandregister", verifyandregister)
 router.post("/login", login)
-router.post("/seller/register",isAuthenticated,registerSeller)
+router.post("/seller/register", isAuthenticated, uploadNationalId.single("nationalIdImage"), registerSeller)
 
 router.post("/forgotpassword", forgotPassword)
 router.post("/resetpassword", resetPassword)
 
-router.get("/profiles/user",isAuthenticated,getProfile)
-router.post("/logout",logout)
+router.get("/profiles/user", isAuthenticated, getProfile)
+router.post("/logout", logout)
 
 module.exports = router
