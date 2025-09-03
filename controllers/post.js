@@ -68,7 +68,7 @@ exports.createpost = async (req, res) => {
         Subdistrict,
         Address,
         Propertytype,
-
+        Description,
         Usable_Area: toFloatOrNull(Usable_Area),
         Land_Size: toFloatOrNull(Land_Size),
         Bedrooms: toIntOrNull(Bedrooms),

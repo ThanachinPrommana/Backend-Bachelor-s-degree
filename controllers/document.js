@@ -73,7 +73,7 @@ exports.approveDocument = async (req, res) => {
         });
     }
 }
-//complete
+//complete ยังไม่ใช้
 exports.getDocument = async (req, res) => {
     try {
         const userId = req.session.user.id
