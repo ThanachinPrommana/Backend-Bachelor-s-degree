@@ -236,6 +236,7 @@ exports.getPost = async (req, res) => {
         Subdistrict: true,
         Address: true,
         Category: true,
+        categoryId: true,
         Usable_Area: true,
         Total_Rooms: true,
         Year_Built: true,

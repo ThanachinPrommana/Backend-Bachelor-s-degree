@@ -27,6 +27,20 @@ exports.list = async (req, res) => {
         res.status(500).json({ message: "Server Error" });
     }
 }
+exports.getById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cat = await prisma.category.findUnique({
+      where: { id },
+      select: { id: true, name: true }, // พอสำหรับแสดงผล
+    });
+    if (!cat) return res.status(404).json({ message: "Category not found" });
+    res.json(cat);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
 exports.removecategory = async (req, res) => {
     try {
         const { id } = req.params;
