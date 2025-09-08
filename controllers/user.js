@@ -12,36 +12,39 @@ const getCloudinaryResourceDetails = async (publicId) => {
   }
 };
 //admin
+// admin
 exports.updateStatusSeller = async (req, res) => {
   try {
     const { Status } = req.body;
-    const { id } = req.params;
-    const normalizedStatus = Status?.toUpperCase();
-    if (!Object.values(Status_Seller).includes(normalizedStatus)) {
-      return res.status(400).json({
-        message: "Invalid status",
-      });
-    }
-    const existingSeller = await prisma.seller.findUnique({
-      where: { id },
-    });
+    const { sellerId } = req.params; // ← ใช้ชื่อใหม่ตาม router
 
+    const normalizedStatus = Status?.toUpperCase();
+    if (!normalizedStatus) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+    if (!Object.values(Status_Seller).includes(normalizedStatus)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const existingSeller = await prisma.seller.findUnique({
+      where: { id: sellerId },
+    });
     if (!existingSeller) {
       return res.status(404).json({ message: "Seller not found" });
     }
+
     const seller = await prisma.seller.update({
-      where: { id },
-      data: { Status },
+      where: { id: sellerId },
+      data: { Status: normalizedStatus }, // ← ใช้ค่า normalize
     });
 
     res.json(seller);
   } catch (err) {
     console.log(err);
-    res.status(500).json({
-      message: "Server Error",
-    });
+    res.status(500).json({ message: "Server Error" });
   }
 };
+
 //admin
 exports.deleteUser = async (req, res) => {
   try {
@@ -209,110 +212,153 @@ exports.getUserProfile = async (req, res) => {
     })
   }
 }
-//complete
+// complete (รวม User + Buyer + Seller)
 exports.updateSeller = async (req, res) => {
   try {
-    const { id } = req.session.user;
+    const { id } = req.session.user || {};
     if (!id) {
       return res.status(401).json({
-        message: "Unauthorized: Please log in to update your profile."
+        message: "Unauthorized: Please log in to update your profile.",
       });
     }
 
-    const updatedUser = await prisma.$transaction(async (tx) => {
-      const {
-        First_name, Last_name, Phone,// User fields (Email ถูกนำออก)
-        National_ID, Company_Name, RealEstate_License, // Seller fields
-        DateofBirth, Occupation, Monthly_Income, Preferred_Province, Preferred_District // Buyer fields
-      } = req.body;
+    const updatedUser = await prisma.$transaction(
+      async (tx) => {
+        const {
+          // User
+          First_name,
+          Last_name,
+          Phone,
+          // Seller
+          National_ID,
+          Company_Name,
+          RealEstate_License,
+          // Buyer (ครบชุดแบบ Verify)
+          DateofBirth,
+          Occupation,
+          Monthly_Income,
+          Family_Size,
+          Parking_Needs,
+          Nearby_Facilities,
+          Lifestyle_Preferences,
+          Special_Requirements,
+          Preferred_Province,
+          Preferred_District,
+        } = req.body;
 
-      // Uniqueness Validation (นำส่วนเช็ค Email ออก)
-      if (National_ID) {
-        const existingSeller = await tx.seller.findFirst({
-          where: { National_ID, userId: { not: id } }
+        // เช็คเลขบัตรประชาชนซ้ำ (ข้ามถ้าไม่ได้ส่งมา)
+        if (National_ID) {
+          const existingSeller = await tx.seller.findFirst({
+            where: { National_ID, userId: { not: id } },
+          });
+          if (existingSeller) {
+            throw new Error("This National ID is already in use.");
+          }
+        }
+
+        const userDataToUpdate = {};
+        const sellerDataToUpdate = {};
+        const buyerDataToUpdate = {};
+
+        // ===== User =====
+        const allowedUserFields = ["First_name", "Last_name", "Phone"];
+        allowedUserFields.forEach((field) => {
+          if (req.body[field] !== undefined) userDataToUpdate[field] = req.body[field];
         });
-        if (existingSeller) throw new Error("This National ID is already in use.");
-      }
 
-      const userDataToUpdate = {};
-      const sellerDataToUpdate = {};
-      const buyerDataToUpdate = {};
+        // ===== Seller =====
+        const allowedSellerFields = ["National_ID", "Company_Name", "RealEstate_License"];
+        allowedSellerFields.forEach((field) => {
+          if (req.body[field] !== undefined) sellerDataToUpdate[field] = req.body[field];
+        });
 
-      // กำหนด field ที่อนุญาต (นำ 'Email' ออกจาก Array)
-      const allowedUserFields = ['First_name', 'Last_name', 'Phone'];
-      const allowedSellerFields = ['National_ID', 'Company_Name', 'RealEstate_License'];
-      const allowedBuyerFields = ['DateofBirth', 'Occupation', 'Monthly_Income', 'Preferred_Province', 'Preferred_District'];
+        // ===== Buyer (ครบชุด) =====
+        const allowedBuyerFields = [
+          "DateofBirth",
+          "Occupation",
+          "Monthly_Income",
+          "Family_Size",
+          "Parking_Needs",
+          "Nearby_Facilities",
+          "Lifestyle_Preferences",
+          "Special_Requirements",
+          "Preferred_Province",
+          "Preferred_District",
+        ];
 
-      allowedUserFields.forEach(field => {
-        if (req.body[field] !== undefined) userDataToUpdate[field] = req.body[field];
-      });
-      allowedSellerFields.forEach(field => {
-        if (req.body[field] !== undefined) sellerDataToUpdate[field] = req.body[field];
-      });
-      allowedBuyerFields.forEach(field => {
-        if (req.body[field] !== undefined) {
+        allowedBuyerFields.forEach((field) => {
+          if (req.body[field] === undefined) return;
+
           let value = req.body[field];
-          if (field === 'DateofBirth') value = new Date(value);
-          if (field === 'Monthly_Income') value = parseFloat(value);
+
+          if (field === "DateofBirth") {
+            const d = new Date(value);
+            if (!isNaN(d.getTime())) value = d;
+            else return; // ข้ามค่าไม่ถูกต้อง
+          }
+
+          if (field === "Monthly_Income" || field === "Family_Size") {
+            const n = Number(value);
+            if (Number.isNaN(n)) return; // ข้ามค่าไม่ใช่ตัวเลข
+            value = n;
+          }
+
+          // ถ้าฟิลด์เป็น enum ใน Prisma (Parking/Nearby/Lifestyle) คุณสามารถตรวจสอบ whitelist เพิ่มได้ที่นี่
           buyerDataToUpdate[field] = value;
+        });
+
+        // แนบ nested update เฉพาะเมื่อมีข้อมูลจะอัปเดตจริง
+        if (Object.keys(sellerDataToUpdate).length > 0) {
+          userDataToUpdate.Seller = { update: sellerDataToUpdate };
         }
-      });
-
-      if (Object.keys(sellerDataToUpdate).length > 0) {
-        userDataToUpdate.Seller = {
-          update: sellerDataToUpdate
-        };
-      }
-      if (Object.keys(buyerDataToUpdate).length > 0) {
-        userDataToUpdate.Buyer = {
-          update: buyerDataToUpdate
-        };
-      }
-
-      const user = await tx.user.update({
-        where: { id },
-        data: userDataToUpdate,
-        include: {
-          Seller: true,
-          Buyer: true
+        if (Object.keys(buyerDataToUpdate).length > 0) {
+          userDataToUpdate.Buyer = { update: buyerDataToUpdate };
         }
-      });
 
-      return user;
-    },
-      {
-        timeout: 10000
-      }
+        const user = await tx.user.update({
+          where: { id },
+          data: userDataToUpdate,
+          include: { Seller: true, Buyer: true },
+        });
+
+        return user;
+      },
+      { timeout: 10000 }
     );
 
+    // cleanup
     delete updatedUser.Password;
     req.session.user = updatedUser;
 
     res.json({
       message: "User profile updated successfully",
-      user: updatedUser
+      user: updatedUser,
     });
-
   } catch (err) {
     console.log(err);
-    res.status(err.message.includes("in use") ? 400 : 500).json({
-      message: err.message || "Server Error"
+    res.status(err.message?.includes("in use") ? 400 : 500).json({
+      message: err.message || "Server Error",
     });
   }
 };
-//complete
+
+// complete (อัปเดต User + Buyer ฝั่งผู้ซื้อ)
 exports.updateUser = async (req, res) => {
   try {
-    const { id } = req.session.user
+    const { id } = req.session.user || {};
     if (!id) {
       return res.status(401).json({
-        message: "Unauthorized: Please log in to update your profile."
+        message: "Unauthorized: Please log in to update your profile.",
       });
     }
+
     const {
+      // User
       First_name,
       Last_name,
       Phone,
+      image,
+      // Buyer (ครบชุด)
       DateofBirth,
       Occupation,
       Monthly_Income,
@@ -321,64 +367,60 @@ exports.updateUser = async (req, res) => {
       Nearby_Facilities,
       Lifestyle_Preferences,
       Special_Requirements,
-      image,
       Preferred_Province,
-      Preferred_District
+      Preferred_District,
     } = req.body;
 
-    // กรองเฉพาะฟิลด์ที่ส่งมา
     const dataToUpdate = {};
     if (First_name !== undefined) dataToUpdate.First_name = First_name;
     if (Last_name !== undefined) dataToUpdate.Last_name = Last_name;
-    // if (Email !== undefined) dataToUpdate.Email = Email;
     if (Phone !== undefined) dataToUpdate.Phone = Phone;
     if (image !== undefined) dataToUpdate.image = image;
 
     const buyerDataToUpdate = {};
-    if (DateofBirth !== undefined) buyerDataToUpdate.DateofBirth = new Date(DateofBirth);
+    if (DateofBirth !== undefined) {
+      const d = new Date(DateofBirth);
+      if (!isNaN(d.getTime())) buyerDataToUpdate.DateofBirth = d;
+    }
     if (Occupation !== undefined) buyerDataToUpdate.Occupation = Occupation;
-    if (Monthly_Income !== undefined) buyerDataToUpdate.Monthly_Income = Monthly_Income;
-    // if (Family_Size !== undefined) buyerDataToUpdate.Family_Size = Family_Size;
-    // if (Parking_Needs !== undefined) buyerDataToUpdate.Parking_Needs = Parking_Needs;
-    // if (Nearby_Facilities !== undefined) buyerDataToUpdate.Nearby_Facilities = Nearby_Facilities;
-    // if (Lifestyle_Preferences !== undefined) buyerDataToUpdate.Lifestyle_Preferences = Lifestyle_Preferences;
-    // if (Special_Requirements !== undefined) buyerDataToUpdate.Special_Requirements = Special_Requirements;
+    if (Monthly_Income !== undefined) {
+      const n = Number(Monthly_Income);
+      if (!Number.isNaN(n)) buyerDataToUpdate.Monthly_Income = n;
+    }
+    if (Family_Size !== undefined) {
+      const n = Number(Family_Size);
+      if (!Number.isNaN(n)) buyerDataToUpdate.Family_Size = n;
+    }
+    if (Parking_Needs !== undefined) buyerDataToUpdate.Parking_Needs = Parking_Needs;
+    if (Nearby_Facilities !== undefined) buyerDataToUpdate.Nearby_Facilities = Nearby_Facilities;
+    if (Lifestyle_Preferences !== undefined) buyerDataToUpdate.Lifestyle_Preferences = Lifestyle_Preferences;
+    if (Special_Requirements !== undefined) buyerDataToUpdate.Special_Requirements = Special_Requirements;
     if (Preferred_Province !== undefined) buyerDataToUpdate.Preferred_Province = Preferred_Province;
     if (Preferred_District !== undefined) buyerDataToUpdate.Preferred_District = Preferred_District;
-    // ถ้ามีข้อมูล Buyer ต้องการอัปเดต
+
     if (Object.keys(buyerDataToUpdate).length > 0) {
-      dataToUpdate.Buyer = {
-        update: buyerDataToUpdate
-      };
+      dataToUpdate.Buyer = { update: buyerDataToUpdate };
     }
 
     const Updateuser = await prisma.user.update({
       where: { id },
       data: dataToUpdate,
-
-      include: {
-        Buyer: true
-      }
+      include: { Buyer: true },
     });
 
-
-    if (Updateuser.Password) {
-      delete Updateuser.Password;
-    }
-    req.session.user = Updateuser
+    if (Updateuser.Password) delete Updateuser.Password;
+    req.session.user = Updateuser;
 
     res.json({
       message: "User update success",
-      user: Updateuser
+      user: Updateuser,
     });
-
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      message: "Server Error"
-    });
+    res.status(500).json({ message: "Server Error" });
   }
 };
+
 //complete
 exports.updateimage = async (req, res) => {
   try {
@@ -563,25 +605,25 @@ exports.useruploadDocument = async (req, res) => {
 //ยังไม่ใช้
 exports.getdeposits = async (req, res) => {
   try {
-    const { userId } = req.params
+    const userId = req.session.user?.id; // ← ใช้ session
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const deposits = await prisma.deposit.findMany({
-      where: {
-        userId
-      },
+      where: { userId },
       include: {
-        propertyPost: true
-      }
-    })
-    res.json({
-      deposits
-    })
+        propertyPost: true, // ← ให้ตรงชื่อ relation ใน Prisma ของคุณ
+      },
+    });
+
+    res.json({ deposits });
   } catch (err) {
-    console.log(err)
-    res.status(500).json({
-      message: "Server Error"
-    })
+    console.log(err);
+    res.status(500).json({ message: "Server Error" });
   }
-}
+};
+
 //complete ยังไม่ใช้
 exports.getpostBySeller = async (req, res) => {
   try {
@@ -884,17 +926,16 @@ exports.createdeposite = async (req, res) => {
 //complete
 exports.updateDepositStatus = async (req, res) => {
   try {
-    const user = req.session.user
-
+    const user = req.session.user;
     if (!user) {
       return res.status(401).json({ message: "Unauthorized: โปรดเข้าสู่ระบบ" });
     }
-    const sellerId = user.id
+    const sellerId = user.id;
 
-    const { depositId } = req.params
-    const { status } = req.body
+    const { depositId } = req.params;
+    const { status } = req.body;
 
-    const allowedStatuses = ["CONFIRMED", "REJECTED"]
+    const allowedStatuses = ["CONFIRMED", "REJECTED"];
     if (!status || !allowedStatuses.includes(status)) {
       return res.status(400).json({
         message: `Invalid status: สถานะต้องเป็น ${allowedStatuses.join(" หรือ ")} เท่านั้น`,
@@ -903,83 +944,76 @@ exports.updateDepositStatus = async (req, res) => {
 
     const result = await prisma.$transaction(async (tx) => {
       const deposit = await tx.deposit.findUnique({
-        where: {
-          id: depositId
-        },
+        where: { id: depositId },
         include: {
-          Post: {
-            select: {
-              userId: true
-            }
-          }
-        }
-      })
+          // เปลี่ยนชื่อ relation ให้ตรงกับ Prisma ของคุณ
+          // ถ้า relation ชื่อ propertyPost:
+          propertyPost: { select: { userId: true } },
+          // ถ้า relation ชื่อ Post ให้ใช้:
+          // Post: { select: { userId: true } },
+        },
+      });
 
-      if (!deposit) {
-        throw new Error("Deposit not found: ไม่พบรายการมัดจำนี้");
-      }
-      if (deposit.Post.userId !== sellerId) {
+      if (!deposit) throw new Error("Deposit not found: ไม่พบรายการมัดจำนี้");
+
+      // ตรวจเจ้าของโพสต์ให้ตรงกับ relation ที่ใช้ด้านบน
+      const postOwnerId = deposit.propertyPost?.userId /* หรือ deposit.Post?.userId */;
+      if (postOwnerId !== sellerId) {
         throw new Error("Forbidden: คุณไม่มีสิทธิ์ในการจัดการรายการมัดจำนี้");
       }
       if (deposit.Deposit_Status !== "PENDING") {
-        throw new Error(`Conflict: รายการมัดจำนี้ไม่ได้อยู่ในสถานะ PENDING (สถานะปัจจุบัน: ${deposit.Deposit_Status})`);
+        throw new Error(
+          `Conflict: รายการมัดจำนี้ไม่ได้อยู่ในสถานะ PENDING (สถานะปัจจุบัน: ${deposit.Deposit_Status})`
+        );
       }
 
       const updatedDeposit = await tx.deposit.update({
-        where: {
-          id: depositId
-        },
-        data: {
-          Deposit_Status: status
-        }
-      })
+        where: { id: depositId },
+        data: { Deposit_Status: status },
+      });
 
       const buyerId = updatedDeposit.userId;
-      let notificationTitle = "";
-      let notificationMessage = "";
-      let relatedProcess = "";
 
+      const map = {
+        CONFIRMED: {
+          Title: "การมัดจำของคุณได้รับการยืนยันแล้ว",
+          Message: "ผู้ขายได้ยืนยันการชำระเงินมัดจำสำหรับโพสต์เรียบร้อยแล้ว",
+          relatedProcess: "DEPOSIT_CONFIRMED",
+        },
+        REJECTED: {
+          Title: "การมัดจำของคุณถูกปฏิเสธ",
+          Message:
+            "ผู้ขายได้ปฏิเสธการมัดจำของคุณ กรุณาติดต่อผู้ขายเพื่อสอบถามรายละเอียดเพิ่มเติม",
+          relatedProcess: "DEPOSIT_REJECTED",
+        },
+      };
 
-      if (status === "CONFIRMED") {
-        notificationTitle = "การมัดจำของคุณได้รับการยืนยันแล้ว";
-        notificationMessage = "ผู้ขายได้ยืนยันการชำระเงินมัดจำสำหรับโพสต์เรียบร้อยแล้ว";
-        relatedProcess = "DEPOSIT_CONFIRMED";
-      } else { // REJECTED
-        notificationTitle = "การมัดจำของคุณถูกปฏิเสธ";
-        notificationMessage = "ผู้ขายได้ปฏิเสธการมัดจำของคุณ กรุณาติดต่อผู้ขายเพื่อสอบถามรายละเอียดเพิ่มเติม";
-        relatedProcess = "DEPOSIT_REJECTED";
-      }
+      const meta = map[status];
 
       await tx.notification.create({
         data: {
           userId: buyerId,
-          Title: notificationTitle,
-          Message: notificationMessage,
+          Title: meta.Title,
+          Message: meta.Message,
           Status: "UNREAD",
-          relatedProcess: relatedProcess,
+          relatedProcess: meta.relatedProcess,
           referenceId: updatedDeposit.id,
         },
       });
 
       return updatedDeposit;
-
-    })
-
+    });
 
     res.status(200).json({
       message: `Deposit status updated to ${status} successfully.`,
       deposit: result,
     });
-
-
-
   } catch (err) {
-    console.log(err)
-    res.status(500), json({
-      message: "Server Error"
-    })
+    console.log(err);
+    res.status(500).json({ message: "Server Error" }); // ← แก้ .json()
   }
-}
+};
+
 
 
 
