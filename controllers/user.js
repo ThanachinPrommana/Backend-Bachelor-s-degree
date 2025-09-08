@@ -1,6 +1,7 @@
 const prisma = require("../config/prisma");
 const { Status_Seller, UserType } = require("@prisma/client");
-const cloudinary = require("../utils/cloudinary")
+const cloudinary = require("../utils/cloudinary");
+const { include } = require("params");
 const getCloudinaryResourceDetails = async (publicId) => {
   try {
     const resource = await cloudinary.api.resource(publicId);
@@ -10,6 +11,7 @@ const getCloudinaryResourceDetails = async (publicId) => {
     return null;
   }
 };
+//admin
 exports.updateStatusSeller = async (req, res) => {
   try {
     const { Status } = req.body;
@@ -40,7 +42,7 @@ exports.updateStatusSeller = async (req, res) => {
     });
   }
 };
-
+//admin
 exports.deleteUser = async (req, res) => {
   try {
     const { id } = req.params
@@ -65,6 +67,7 @@ exports.deleteUser = async (req, res) => {
     })
   }
 }
+//admin
 exports.listUserSeller = async (req, res) => {
   try {
 
@@ -92,6 +95,7 @@ exports.listUserSeller = async (req, res) => {
     })
   }
 }
+//admin
 exports.listUserBuyer = async (req, res) => {
   try {
 
@@ -296,7 +300,7 @@ exports.updateSeller = async (req, res) => {
     });
   }
 };
-//complete ลบ email
+//complete
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.session.user
@@ -362,7 +366,7 @@ exports.updateUser = async (req, res) => {
       delete Updateuser.Password;
     }
     req.session.user = Updateuser
-  
+
     res.json({
       message: "User update success",
       user: Updateuser
@@ -412,48 +416,48 @@ exports.updateimage = async (req, res) => {
   }
 };
 
-exports.userdeposit = async (req, res) => {
-  try {
-    const { userId, postId, Deposit_Amount } = req.body
-    if (!userId || !postId || !Deposit_Amount || Deposit_Amount <= 0) {
-      return res.status(400).json({
-        message: "Invalid deposit request"
-      })
-    }
-    const deposit = await prisma.deposit.create({
-      data: {
-        userId,
-        postId,
-        Deposit_Amount,
-        Deposit_Status: "PENDING",
-      }
-    })
-    const property = await prisma.propertyPost.findUnique({
-      where: {
-        id: postId
-      }, include: {
-        user: true
-      }
-    })
-    await prisma.notification.create({
-      data: {
-        userId: property.userId,
-        Title: "มีคำขอมัดจำใหม่",
-        Message: "กรุณาตรวจสอบเอกสารของผู้ซื้อ",
-        Status: "UNREAD",
-        relatedProcess: "DEPOSIT",
-        referenceId: deposit.id
-      }
-    })
+// exports.userdeposit = async (req, res) => {
+//   try {
+//     const { userId, postId, Deposit_Amount } = req.body
+//     if (!userId || !postId || !Deposit_Amount || Deposit_Amount <= 0) {
+//       return res.status(400).json({
+//         message: "Invalid deposit request"
+//       })
+//     }
+//     const deposit = await prisma.deposit.create({
+//       data: {
+//         userId,
+//         postId,
+//         Deposit_Amount,
+//         Deposit_Status: "PENDING",
+//       }
+//     })
+//     const property = await prisma.propertyPost.findUnique({
+//       where: {
+//         id: postId
+//       }, include: {
+//         user: true
+//       }
+//     })
+//     await prisma.notification.create({
+//       data: {
+//         userId: property.userId,
+//         Title: "มีคำขอมัดจำใหม่",
+//         Message: "กรุณาตรวจสอบเอกสารของผู้ซื้อ",
+//         Status: "UNREAD",
+//         relatedProcess: "DEPOSIT",
+//         referenceId: deposit.id
+//       }
+//     })
 
-    res.json({ message: "สร้างการมัดจำสำเร็จ", deposit });
-  } catch (err) {
-    console.log(err)
-    res.status(500).json({
-      message: "Server Error"
-    })
-  }
-}
+//     res.json({ message: "สร้างการมัดจำสำเร็จ", deposit });
+//   } catch (err) {
+//     console.log(err)
+//     res.status(500).json({
+//       message: "Server Error"
+//     })
+//   }
+// }
 //complete
 exports.useruploadDocument = async (req, res) => {
   try {
@@ -472,9 +476,30 @@ exports.useruploadDocument = async (req, res) => {
     if (!file) {
       return res.status(400).json({ message: "No file upload" });
     }
+
+    const existingDocument = await prisma.documentUpload.findFirst({
+      where: {
+        userId: userId,
+        postId: postId,
+        Review_Status: {
+          in: ["PENDING", "APPROVED"] // ตรวจสอบว่ามีเอกสารที่รออนุมัติ หรือ อนุมัติไปแล้วหรือไม่
+        }
+      }
+    });
+
+    // ถ้าเจอเอกสารที่ยัง Active อยู่ ให้ส่ง Error กลับไป
+    if (existingDocument) {
+      const message = existingDocument.Review_Status === "PENDING"
+        ? "คุณมีเอกสารที่รอการตรวจสอบสำหรับโพสต์นี้อยู่แล้ว"
+        : "คุณมีเอกสารที่ได้รับการอนุมัติสำหรับโพสต์นี้แล้ว ไม่จำเป็นต้องส่งเอกสารเพิ่มเติม";
+
+      return res.status(409).json({ message }); // 409 Conflict
+    }
+
     // console.log("Uploaded file info:", req.file);
     // console.log("Document URL:", file.path);
     // console.log("File resource_type:", file.resource_type);
+
     const documentUrl = file.secure_url || file.path || file.url;
     const publicId = file.filename || file.public_id;
 
@@ -484,6 +509,7 @@ exports.useruploadDocument = async (req, res) => {
     // const ext = file.mimetype.split("/")[1].toLowerCase();
     // const resourceType = ["pdf", "doc", "docx"].includes(ext) ? "raw" : "image";
     // console.log("Resource Type:", resourceType);
+
     const document = await prisma.documentUpload.create({
       data: {
         userId: userId,
@@ -534,7 +560,7 @@ exports.useruploadDocument = async (req, res) => {
     res.status(500).json({ message: "Server Error" });
   }
 };
-
+//ยังไม่ใช้
 exports.getdeposits = async (req, res) => {
   try {
     const { userId } = req.params
@@ -597,7 +623,7 @@ exports.getpostBySeller = async (req, res) => {
   }
 }
 
-
+//complete
 exports.deletePostBySeller = async (req, res) => {
   try {
     const { postId } = req.params
@@ -608,7 +634,18 @@ exports.deletePostBySeller = async (req, res) => {
     const postToDelete = await prisma.propertyPost.findUnique({
       where: {
         id: postId,
-      },
+      }, include: {
+        Image: {
+          select: {
+            public_id: true
+          }
+        },
+        Video: {
+          select: {
+            public_id: true
+          }
+        }
+      }
     });
 
     if (!postToDelete) {
@@ -617,6 +654,30 @@ exports.deletePostBySeller = async (req, res) => {
     if (postToDelete.userId !== userId) {
       return res.status(403).json({ message: "Forbidden. You are not the owner of this post." });
     }
+
+    if (postToDelete.Image && postToDelete.Image.length > 0) {
+      const imagePublicIds = postToDelete.Image
+        // ✅ แก้ไข field name ให้ถูกต้อง
+        .map(img => img.public_id)
+        .filter(id => id); // กรองค่า null ออก
+
+      if (imagePublicIds.length > 0) {
+        await cloudinary.api.delete_resources(imagePublicIds);
+      }
+    }
+
+    // ลบวิดีโอทั้งหมด
+    if (postToDelete.Video && postToDelete.Video.length > 0) {
+      const videoPublicIds = postToDelete.Video
+        // ✅ แก้ไข field name ให้ถูกต้อง
+        .map(vid => vid.public_id)
+        .filter(id => id);
+
+      if (videoPublicIds.length > 0) {
+        await cloudinary.api.delete_resources(videoPublicIds, { resource_type: 'video' });
+      }
+    }
+
     // --- Start Transaction ---
     // ใช้ transaction เพื่อลบข้อมูลที่เกี่ยวข้องกันทั้งหมด
     await prisma.$transaction([
@@ -648,7 +709,7 @@ exports.deletePostBySeller = async (req, res) => {
     })
   }
 }
-
+//complete
 exports.searchFiltersSeller = async (req, res) => {
   try {
     // 1. ดึงข้อมูล user จาก session
@@ -698,6 +759,228 @@ exports.searchFiltersSeller = async (req, res) => {
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' });
   }
 };
+//complete
+exports.createdeposite = async (req, res) => {
+  try {
+    const user = req.session.user
+
+    if (!user) {
+      return res.status(401).json({
+        message: "Unauthorized: Please log in to make a deposit."
+      })
+    }
+    const userId = user.id
+    console.log("UserID:", userId)
+    const { postId, documentId } = req.body
+
+    if (!postId || !documentId) {
+      return res.status(400).json({
+        message: "Missing required fields: postId, depositAmount, and documentId are required."
+      });
+    }
+    const post = await prisma.propertyPost.findUnique({
+      where: {
+        id: postId
+      },
+      select: {
+        userId: true,
+        Deposit_Amount: true
+      }
+    })
+
+
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found."
+      })
+    }
+    if (!post.Deposit_Amount || post.Deposit_Amount <= 0) {
+      return res.status(400).json({ message: "This post does not require a deposit." });
+    }
+
+    const depositAmountFromPost = post.Deposit_Amount
+
+    const document = await prisma.documentUpload.findUnique({
+      where: {
+        id: documentId
+      }
+    })
+    if (!document) {
+      return res.status(404).json({ message: "Associated document not found." });
+    }
+    if (document.Review_Status !== "APPROVED") {
+      return res.status(403).json({
+        message: `Action forbidden: Document status is '${document.Review_Status}', not 'APPROVED'.`
+      });
+    }
+
+    const existingDeposit = await prisma.deposit.findFirst({
+      where: {
+        postId: postId,
+        Deposit_Status: {
+          in: ["PENDING", "CONFIRMED"] // ตรวจสอบสถานะทั้ง PENDING และ CONFIRMED
+        }
+      }
+    });
+
+    // ถ้าเจอว่ามีมัดจำที่ Active อยู่แล้ว ให้ส่ง Error กลับไป
+    if (existingDeposit) {
+      return res.status(409).json({ // 409 Conflict คือ status code ที่เหมาะสมที่สุด
+        message: "ไม่สามารถทำรายการได้ เนื่องจากมีผู้ทำรายการมัดจำสำหรับโพสต์นี้อยู่แล้วหรือมัดจำสำเร็จแล้ว"
+      });
+    }
+
+    const newDeposit = await prisma.deposit.create({
+      data: {
+        postId: postId,
+        userId: userId,
+        Deposit_Amount: depositAmountFromPost,
+        Deposit_Status: "PENDING"
+      }
+    })
+
+    await prisma.documentUpload.update({
+      where: {
+        id: documentId
+      },
+      data: {
+        depositId: newDeposit.id
+      }
+    })
+    await prisma.notification.create({
+      data: {
+        userId: post.userId,
+        Title: "คุณได้รับการชำระเงินมัดจำใหม่",
+        Message: `ผู้ใช้ ${user.First_name} ได้ชำระเงินมัดจำสำหรับโพสต์ของคุณ`,
+        Status: "UNREAD",
+        relatedProcess: "DEPOSIT_RECEIVED",
+        referenceId: newDeposit.id,
+      },
+    });
+
+    // แจ้งเตือนยืนยันไปยังผู้ซื้อ (Buyer)
+    await prisma.notification.create({
+      data: {
+        userId: userId,
+        Title: "การชำระเงินมัดจำสำเร็จ",
+        Message: "ระบบได้บันทึกการชำระเงินมัดจำของคุณแล้ว รอการยืนยันจากผู้ขาย",
+        Status: "UNREAD",
+        relatedProcess: "DEPOSIT_PAID",
+        referenceId: newDeposit.id,
+      },
+    });
+    res.status(201).json({
+      message: "Deposit created successfully. Waiting for seller confirmation.",
+      deposit: newDeposit,
+    });
+    // res.json({
+    //   message:"Helllo"
+    // })
+  } catch (err) {
+    console.error("Error creating deposit:", err);
+    res.status(500).json({ message: "Server Error" });
+  }
+}
+//complete
+exports.updateDepositStatus = async (req, res) => {
+  try {
+    const user = req.session.user
+
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized: โปรดเข้าสู่ระบบ" });
+    }
+    const sellerId = user.id
+
+    const { depositId } = req.params
+    const { status } = req.body
+
+    const allowedStatuses = ["CONFIRMED", "REJECTED"]
+    if (!status || !allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        message: `Invalid status: สถานะต้องเป็น ${allowedStatuses.join(" หรือ ")} เท่านั้น`,
+      });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const deposit = await tx.deposit.findUnique({
+        where: {
+          id: depositId
+        },
+        include: {
+          Post: {
+            select: {
+              userId: true
+            }
+          }
+        }
+      })
+
+      if (!deposit) {
+        throw new Error("Deposit not found: ไม่พบรายการมัดจำนี้");
+      }
+      if (deposit.Post.userId !== sellerId) {
+        throw new Error("Forbidden: คุณไม่มีสิทธิ์ในการจัดการรายการมัดจำนี้");
+      }
+      if (deposit.Deposit_Status !== "PENDING") {
+        throw new Error(`Conflict: รายการมัดจำนี้ไม่ได้อยู่ในสถานะ PENDING (สถานะปัจจุบัน: ${deposit.Deposit_Status})`);
+      }
+
+      const updatedDeposit = await tx.deposit.update({
+        where: {
+          id: depositId
+        },
+        data: {
+          Deposit_Status: status
+        }
+      })
+
+      const buyerId = updatedDeposit.userId;
+      let notificationTitle = "";
+      let notificationMessage = "";
+      let relatedProcess = "";
+
+
+      if (status === "CONFIRMED") {
+        notificationTitle = "การมัดจำของคุณได้รับการยืนยันแล้ว";
+        notificationMessage = "ผู้ขายได้ยืนยันการชำระเงินมัดจำสำหรับโพสต์เรียบร้อยแล้ว";
+        relatedProcess = "DEPOSIT_CONFIRMED";
+      } else { // REJECTED
+        notificationTitle = "การมัดจำของคุณถูกปฏิเสธ";
+        notificationMessage = "ผู้ขายได้ปฏิเสธการมัดจำของคุณ กรุณาติดต่อผู้ขายเพื่อสอบถามรายละเอียดเพิ่มเติม";
+        relatedProcess = "DEPOSIT_REJECTED";
+      }
+
+      await tx.notification.create({
+        data: {
+          userId: buyerId,
+          Title: notificationTitle,
+          Message: notificationMessage,
+          Status: "UNREAD",
+          relatedProcess: relatedProcess,
+          referenceId: updatedDeposit.id,
+        },
+      });
+
+      return updatedDeposit;
+
+    })
+
+
+    res.status(200).json({
+      message: `Deposit status updated to ${status} successfully.`,
+      deposit: result,
+    });
+
+
+
+  } catch (err) {
+    console.log(err)
+    res.status(500), json({
+      message: "Server Error"
+    })
+  }
+}
+
 
 
 

@@ -347,14 +347,41 @@ exports.getProfile = async (req, res) => {
     if (!id) return res.status(401).json({ message: "Unauthorized" });
 
     // query database ใหม่
+
+
+
+
     const user = await prisma.user.findUnique({
       where: { id },
       include: {
         Seller: true,
         Buyer: true,
+        Deposit: {
+          select: {
+            id: true,
+            Deposit_Status: true,
+            Deposit_Amount: true,
+            Post: {
+              select: {
+                Property_Name:true
+              }
+            }
+          }
+        },
+        Notification: true,
         PropertyPost: {
-          include: {
-            Image: true
+          select: {
+            id: true,
+            Property_Name: true,
+            Price: true,
+            Province: true,
+            Subdistrict: true,
+            District: true,
+            Address: true,
+            Deposit_Amount: true,
+            Sell_Rent: true,
+            Image: true,
+            Deposit: true
           }
         },
         DocumentUpload: {
@@ -366,14 +393,13 @@ exports.getProfile = async (req, res) => {
             DocumentName: true,
             Review_Status: true,
             DocumentUrl: true,
-            createdAt:true,
+            createdAt: true,
             User: {
               select: {
                 First_name: true,
                 Last_name: true
               }
             }
-
           }
         } // include seller info
       }

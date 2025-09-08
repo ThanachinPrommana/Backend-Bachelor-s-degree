@@ -159,27 +159,30 @@ model Buyer {
   updatedAt             DateTime               @updatedAt
   Negotiation           Negotiation[]
   Contract              Contract[]
+  Booking               Booking[]
 }
 
 model Seller {
-  id                 String        @id @default(cuid())
-  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId             String        @unique
-  National_ID        String        @unique
+  id                 String         @id @default(cuid())
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId             String         @unique
+  National_ID        String         @unique
   Company_Name       String?
-  RealEstate_License String?       @unique
-  Status             Status_Seller @default(PENDING)
+  RealEstate_License String?        @unique
+  Status             Status_Seller  @default(PENDING)
   StartTime          DateTime?
-  isBooked           Boolean       @default(false)
+  isBooked           Boolean        @default(false)
   nationalIdImage    String?
   publicId           String?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
   Negotiation        Negotiation[]
   Contract           Contract[]
   Datetime           Datetime[]
-  PropertyPost       PropertyPost? @relation(fields: [propertyPostId], references: [id])
+  PropertyPost       PropertyPost?  @relation(fields: [propertyPostId], references: [id])
   propertyPostId     String?
+  DateTimeSlot       DateTimeSlot[]
+  Booking            Booking[]
 }
 
 model Location {
@@ -398,4 +401,30 @@ model Video {
   postId     String?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
+}
+
+model DateTimeSlot {
+  id        String   @id @default(cuid())
+  startTime DateTime
+  endTime   DateTime
+  isBooked  Boolean  @default(false)
+  Seller    Seller   @relation(fields: [sellerId], references: [id])
+  sellerId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Booking   Booking?
+}
+
+model Booking {
+  id               String       @id @default(cuid())
+  Buyer            Buyer        @relation(fields: [buyerId], references: [id])
+  buyerId          String
+  Seller           Seller       @relation(fields: [sellerId], references: [id])
+  sellerId         String
+  dateTimeSlot     DateTimeSlot @relation(fields: [dateTimeSlotId], references: [id])
+  dateTimeSlotId   String       @unique
+  isReminderSent   Boolean      @default(false) // เปลี่ยนชื่อจาก isNotificationSent เพื่อความชัดเจน (แจ้งเตือนล่วงหน้า)
+  isDayOfAlertSent Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 }
