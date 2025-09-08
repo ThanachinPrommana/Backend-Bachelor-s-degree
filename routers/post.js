@@ -24,7 +24,9 @@ router.get("/post/category/:categoryId", getbycategory)
 router.get("/propertypost/:id", getPost)
 router.get("/allcategory",getallcategory)
 
+
 router.delete("/propertypost/:id", removepost)
+
 router.patch("/propertypost/:id", propertyUpload.fields([
     { name: "images", maxCount: 5 },
     { name: 'videos', maxCount: 2 }
