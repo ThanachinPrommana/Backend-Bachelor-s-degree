@@ -351,11 +351,17 @@ model Notification {
   userId         String
   referenceId    String?
   Title          String
+  type           String             @default("general")
+  targetUrl      String?
+  readAt         DateTime?
   Message        String
   Status         NotificationStatus
   createdAt      DateTime           @default(now())
   relatedProcess String?
-  user           User               @relation(fields: [userId], references: [id])
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, Status])
 }
 
 model Image {
