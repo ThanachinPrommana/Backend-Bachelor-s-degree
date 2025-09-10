@@ -1,5 +1,5 @@
 const prisma = require("../config/prisma");
-const { Status_Seller, UserType } = require("@prisma/client");
+const { Status_Seller, UserType,Status_Disposit } = require("@prisma/client");
 const cloudinary = require("../utils/cloudinary");
 const { include } = require("params");
 const getCloudinaryResourceDetails = async (publicId) => {
@@ -1015,7 +1015,67 @@ exports.updateDepositStatus = async (req, res) => {
 };
 
 
+exports.searchFillerDiposit = async (req, res) => {
+  try {
+    const user = req.session.user
+    if (!user || !user.id) {
+      return res.status(401).json({ success: false, message: 'กรุณาเข้าสู่ระบบก่อน' });
+    }
+    const {
+      q,
+      status,
+      minAmount,
+      maxAmount,
+    } = req.body
 
+    const where = {
+      userId: user.id
+    }
+
+    if (q) {
+      where.OR = [
+        { Post: { Property_Name: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
+    
+    if (status && Object.values(Status_Disposit).includes(status)) {
+      where.Deposit_Status = status;
+    }
+
+    if (minAmount || maxAmount) {
+      where.Deposit_Amount = {}
+      if (minAmount) {
+        where.Deposit_Amount.gte = parseFloat(minAmount)
+      }
+      if (maxAmount){
+        where.Deposit_Amount.lte = parseFloat(maxAmount);
+      }
+    }
+
+    const deposits = await prisma.deposit.findMany({
+      where,
+      include:{
+        Post:{
+          select:{
+            id:true,
+            Property_Name:true,
+          }
+        }
+      },
+      orderBy:{
+        createdAt:"desc"
+      }
+    })
+    res.status(200).json({
+      message:"Success",
+      data:deposits
+    })
+
+  } catch (err) {
+    console.error('Error searching user deposits:', err);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+}
 
 
 
