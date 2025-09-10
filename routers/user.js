@@ -3,33 +3,9 @@ const express = require("express");
 const router = express.Router();
 
 const {
-<<<<<<< HEAD
   // Admin / Management
   updateStatusSeller,   // PATCH /seller/:sellerId/status
   deleteUser,           // DELETE /user/:id
-=======
-    updateStatusSeller,
-    deleteUser,
-    listUserSeller,
-    listUserBuyer,
-    getUserProfile,
-    updateUser,
-    updateimage,
-    getSellerProfile,
-    updateSeller,
-    getpostBySeller,
-    getdeposits,
-    useruploadDocument,
-    searchFiltersSeller,
-    deletePostBySeller,
-    createdeposite,
-    updateDepositStatus,
-    searchFillerDiposit
-} = require("../controllers/user")
-const upload = require("../Middlewares/upload")
-const uploadDocument = require("../Middlewares/document")
-const { isAuthenticated } = require("../Middlewares/authCheck")
->>>>>>> 87f485f (mergeSecond)
 
   // Lists / Search
   listUserSeller,       // GET /userSeller
@@ -49,18 +25,10 @@ const { isAuthenticated } = require("../Middlewares/authCheck")
   getpostBySeller,      // GET /post/seller
   deletePostBySeller,   // DELETE /seller/remove/post/:postId
 
-<<<<<<< HEAD
   // Deposits
   createdeposite,       // POST   /user/create/deposit
   getdeposits,          // GET    /deposit            (ของผู้ใช้ที่ล็อกอิน ตาม session)
   updateDepositStatus,  // PATCH  /update/status/deposit/:depositId
-=======
-//Deposit User
-router.post("/user/create/deposit", isAuthenticated, createdeposite)
-router.get("/deposit", getdeposits)
-router.patch("/update/status/deposit/:depositId",isAuthenticated,updateDepositStatus)
-router.get("/search/deposit/user",isAuthenticated,searchFillerDiposit)
->>>>>>> 87f485f (mergeSecond)
 
   // Documents
   useruploadDocument,   // POST /document
