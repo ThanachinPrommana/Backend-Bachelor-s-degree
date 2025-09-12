@@ -1,102 +1,125 @@
-const jwt = require('jsonwebtoken');
+// middlewares/authCheck.js
+const jwt = require("jsonwebtoken");
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 
-// middleware ตรวจสอบ token และสิทธิ์ role
-exports.authCheck = async (req, res, next) => {
+const multer = require("multer");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("../utils/cloudinary");
+
+/* ============================
+ *  Multer / Cloudinary Upload
+ * ============================ */
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    let folder;
+    let resource_type;
+    let allowed_formats;
+
+    if (file.mimetype.startsWith("image")) {
+      folder = "property_images";
+      resource_type = "image";
+      allowed_formats = ["jpg", "jpeg", "png", "gif"];
+    } else if (file.mimetype.startsWith("video")) {
+      folder = "property_videos";
+      resource_type = "video";
+      allowed_formats = ["mp4", "mov", "avi", "mkv"];
+    } else {
+      // ไม่ throw ที่นี่ ให้ multer จัดการผ่าน fileFilter
+      return { error: "Invalid file type" };
+    }
+    return {
+      folder,
+      resource_type,
+      allowed_formats,
+      // transformation: [{ width: 500, height: 500, crop: "limit" }], // เปิดใช้ถ้าต้องการ
+    };
+  },
+});
+
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith("image") || file.mimetype.startsWith("video")) {
+    cb(null, true);
+  } else {
+    cb(new Error("File type not supported!"), false);
+  }
+};
+
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 1024 * 1024 * 100 }, // 100MB
+});
+
+/* ============================
+ *  JWT Auth (Bearer)
+ * ============================ */
+const authCheck = async (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(" ")[1];
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.split(" ")[1] : null;
     if (!token) return res.status(401).json({ message: "No token provided" });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
+      where: { id: String(decoded.id) },
+      select: { id: true, Email: true, userType: true },
     });
     if (!user) return res.status(401).json({ message: "User not found" });
 
+    // ตั้ง req.user ให้ controller อื่นใช้เช็ค owner ได้
     req.user = {
-      id: user.id,
-      email: user.email,
+      id: String(user.id),
+      email: user.Email,        // ⚠️ Prisma field ชื่อ Email (ตัวใหญ่)
       userType: user.userType,
     };
-const multer = require("multer");
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const cloudinary = require("../utils/cloudinary");
-
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  // params: {
-  //   folder: "profile_images",
-  //   allowed_formats: ["jpg", "jpeg", "png"],
-  //   transformation: [{ width: 500, height: 500, crop: "limit" }],
-  // },  
-  params: async (req, file) => {
-    let folder
-    let resource_type
-    let allowed_formats
-
-    if (file.mimetype.startsWith("image")) {
-      folder = "property_images"
-      resource_type = "image"
-      allowed_formats = ["jpg", "jpeg", "png", "gif"]
-    } else if (file.mimetype.startsWith("video")) {
-      folder = "property_videos"
-      resource_type = "video"
-      allowed_formats = ["mp4", "mov", "avi", "mkv"]
-    } else {
-      return {
-        error: "Invalid file type"
-      }
-    }
-    return {
-      folder: folder,
-      resource_type: resource_type,
-      allowed_formats: allowed_formats,
-    };
-  }
-});
-
-const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith("image") || file.mimetype.startsWith("video")) {
-    cb(null, true); // อนุญาตให้อัปโหลด
-  } else {
-    cb(new Error("File type not supported!"), false); // ไม่อนุญาต
-  }
-};
-
-// 3. สร้าง Multer instance โดยใช้ storage และ fileFilter ที่เราสร้าง
-const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: {
-    fileSize: 1024 * 1024 * 100 // จำกัดขนาดไฟล์ 100MB 
-  }
-});
-
-module.exports = upload;
-
     next();
   } catch (err) {
+    console.error("[authCheck] error:", err?.message);
     res.status(401).json({ message: "Invalid or expired token" });
   }
 };
 
-
-exports.isAuthenticated = (req, res, next) => { 
-    
+/* ============================
+ *  Session Auth
+ * ============================ */
+const isAuthenticated = (req, res, next) => {
+  try {
     if (!req.session) {
-        console.log("CRITICAL FAILURE: req.session object does NOT exist.");
-        console.log("-------------------------------------------\n");
-        return res.status(500).json({ message: 'Session middleware is not configured correctly.' });
+      console.error("CRITICAL: req.session is undefined");
+      return res
+        .status(500)
+        .json({ message: "Session middleware is not configured correctly." });
     }
-    
-    if (req.session && req.session.user) {
-        console.log("SUCCESS: User found in session. Proceeding...");
-        console.log("-------------------------------------------\n");
-        return next();
-    } else {
-        console.log("FAILURE: User NOT found in session. Sending 401.");
-        console.log("-------------------------------------------\n");
-        res.status(401).json({ message: 'You are not logged in' });
+
+    const sessUser = req.session.user;
+    if (!sessUser?.id) {
+      console.warn("FAILURE: User NOT found in session.");
+      return res.status(401).json({ message: "You are not logged in" });
     }
+
+    console.log("SUCCESS: User found in session. Proceeding...");
+    // ผูก req.user ให้สม่ำเสมอ
+    req.user = {
+      id: String(sessUser.id),
+      email: sessUser.Email ?? sessUser.email ?? null, // รองรับได้ทั้งสองแบบ
+      userType: sessUser.userType,
+    };
+
+    return next();
+  } catch (err) {
+    console.error("[isAuthenticated] error:", err?.message);
+    res.status(401).json({ message: "Unauthorized" });
+  }
 };
 
+/* ============================
+ *  Named Exports
+ * ============================ */
+module.exports = {
+  authCheck,        // ใช้กับ JWT
+  isAuthenticated,  // ใช้กับ Session
+  upload,           // ใช้อัปโหลดไฟล์ (image/video)
+};
