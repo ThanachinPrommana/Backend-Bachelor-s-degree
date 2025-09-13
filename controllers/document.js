@@ -1,17 +1,23 @@
 // const prisma = require("@prisma/client")
-const { include } = require("params")
 const prisma = require("../config/prisma")
 const cloudinary = require("../utils/cloudinary")
 //complete
 exports.approveDocument = async (req, res) => {
     try {
-        const userId = req.session.user
 
-        if (!userId) {
-            res.status(403).json({
-                message: "Forbidden: Only sellers can approve documents."
-            })
+
+        if (!req.session.user) {
+            return res.status(401).json({ message: "Unauthorized, please login first" });
         }
+
+        const { userId: approverId, userType } = req.session.user;
+
+        if (userType !== 'Seller') {
+            return res.status(403).json({
+                message: "Forbidden: Only sellers can approve documents."
+            });
+        }
+
         const { documentId } = req.params
 
         const { status } = req.body
@@ -32,7 +38,7 @@ exports.approveDocument = async (req, res) => {
         if (!documentToUpdate) {
             return res.status(404).json({ message: "Document not found" });
         }
-        if (documentToUpdate.Post.userId !== userId.id) {
+        if (documentToUpdate.Post.userId !== approverId) {
             return res.status(403).json({ message: "Forbidden: You are not the owner of this post." });
         }
 
@@ -55,11 +61,11 @@ exports.approveDocument = async (req, res) => {
                 message: "Document APPROVED successfully",
                 document: updatedDocument,
             });
-        }else{
-            const buyerId = documentToUpdate.userId;
+        } else {
+            const uploaderUserId  = documentToUpdate.userId;
             const docName = documentToUpdate.DocumentName;
             const cloudinaryPublicId = documentToUpdate.CloudinaryPublicId;
-            console.log("ID cloud:",cloudinaryPublicId)
+            console.log("ID cloud:", cloudinaryPublicId)
             // !! ข้อแนะนำสำคัญ: ลบไฟล์ออกจาก Cloudinary (หรือ Storage อื่นๆ) ด้วย !!
             if (cloudinaryPublicId) {
                 await cloudinary.uploader.destroy(cloudinaryPublicId);
@@ -73,7 +79,7 @@ exports.approveDocument = async (req, res) => {
             // สร้าง Notification แจ้งเตือน Buyer
             await prisma.notification.create({
                 data: {
-                    userId: buyerId, // ใช้ ID ของ Buyer ที่เก็บไว้
+                    userId: uploaderUserId, // ใช้ ID ของ Buyer ที่เก็บไว้
                     Title: `เอกสารของคุณถูกปฏิเสธ`,
                     Message: `เอกสาร "${docName}" ที่คุณส่งมาถูกปฏิเสธและลบออกจากระบบแล้ว`,
                     Status: "UNREAD",
@@ -206,7 +212,7 @@ const handlequeryDoc = async (req, res, query) => {
 //complete
 exports.searchDocument = async (req, res) => {
     try {
-        if (!req.session.user || !req.session.user.id) {
+        if (!req.session.user || !req.session.user.userId) {
             return res.status(401).json({ message: "Unauthorized. Please log in." });
         }
         const { q } = req.body

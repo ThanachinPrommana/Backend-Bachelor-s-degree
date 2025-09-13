@@ -311,7 +311,7 @@ model Payment {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }
-
+//ลย Negotiation
 model Negotiation {
   id                String            @id @default(cuid())
   NegotiationDate   DateTime
@@ -328,7 +328,7 @@ model Negotiation {
   updatedAt         DateTime          @updatedAt
   Contract          Contract[]
 }
-
+//Contract อยู่ใน Documentupload 
 model Contract {
   id                String         @id @default(cuid())
   buyerId           String
@@ -431,6 +431,7 @@ model Booking {
   dateTimeSlotId   String       @unique
   isReminderSent   Boolean      @default(false) // เปลี่ยนชื่อจาก isNotificationSent เพื่อความชัดเจน (แจ้งเตือนล่วงหน้า)
   isDayOfAlertSent Boolean      @default(false)
+  isAtTimeAlertSent   Boolean   @default(false)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 }

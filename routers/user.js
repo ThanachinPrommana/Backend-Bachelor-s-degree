@@ -32,11 +32,15 @@ const {
 
   // Documents
   useruploadDocument,   // POST /document
+
+  createBooking,
+
+  createDateTimeSlot
 } = require("../controllers/user");
 
 const upload = require("../Middlewares/upload");
 const uploadDocument = require("../Middlewares/document");
-const { isAuthenticated } = require("../Middlewares/authCheck");
+const { isAuthenticated, isSeller } = require("../Middlewares/authCheck");
 
 // -------------------------------------------------------------
 // Admin / Management (ควรมี adminOnly เพิ่มเติม ถ้ามี middleware)
@@ -103,4 +107,9 @@ router.patch("/update/status/deposit/:depositId", isAuthenticated, updateDeposit
 
 router.post("/document", uploadDocument.single("document"), useruploadDocument);
 
+//CreateDateSlot
+router.post("/seller/slot", isAuthenticated, isSeller, createDateTimeSlot);
+
+//CreateBooking
+router.post("/user/booking", isAuthenticated, createBooking);
 module.exports = router;

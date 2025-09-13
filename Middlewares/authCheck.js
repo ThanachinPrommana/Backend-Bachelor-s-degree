@@ -100,3 +100,11 @@ exports.isAuthenticated = (req, res, next) => {
     }
 };
 
+exports.isSeller = (req, res, next) => {
+    // ตรวจสอบให้แน่ใจว่า req.session.user มีอยู่จริงก่อนจะเช็ค userType
+    if (req.session.user && req.session.user.userType === 'Seller') {
+        return next(); 
+    }
+    res.status(403).json({ message: 'Forbidden: คุณไม่มีสิทธิ์ในการเข้าถึงส่วนนี้' });
+};
+

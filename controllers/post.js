@@ -16,6 +16,17 @@ const ALLOWED_AMENITIES = ["Swimming_Pool", "Fitness_Center", "Co_working_Space"
 // =============== CREATE ===============
 exports.createpost = async (req, res) => {
   try {
+    if (!req.session.user) {
+      return res.status(401).json({ message: "Unauthorized, please login first" });
+    }
+
+    // ดึง userId, userType, และ sellerId จาก session
+    const { userId, userType, sellerId } = req.session.user;
+
+    // 2. ตรวจสอบสิทธิ์: เฉพาะ Seller เท่านั้นที่สามารถสร้างโพสต์ได้
+    if (userType !== 'Seller' || !sellerId) {
+      return res.status(403).json({ message: "Forbidden: Only sellers can create posts." });
+    }
     const {
       Property_Name,
       Price,
@@ -49,12 +60,6 @@ exports.createpost = async (req, res) => {
       Interest,
       floor,
     } = req.body;
-
-    if (!req.session.user) {
-      return res.status(401).json({ message: "Unauthorized, please login first" });
-    }
-
-    const userId = req.session.user.id;
 
     // รองรับทั้ง multer.fields() และ multer.array()
     const imageFiles = filesOf(req.files, "images");
@@ -97,7 +102,8 @@ exports.createpost = async (req, res) => {
 
         ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
         user: { connect: { id: userId } },
-
+        Seller: { connect: { id: sellerId } },
+        
         Image: {
           create: imageFiles.map((file) => ({
             asset_id: file.asset_id,
@@ -322,16 +328,16 @@ exports.updatePost = async (req, res) => {
 
     // ฟิลด์ที่อนุญาตให้อัปเดต
     const allowedFields = [
-      "Property_Name","Price","Usable_Area","Land_Size","Bedrooms","Description",
-      "Deposit_Amount","Contract_Seller","LinkMap","Latitude","Longitude",
-      "Province","District","Subdistrict","Address","Total_Rooms","Year_Built",
-      "Nearby_Landmarks","Additional_Amenities","Parking_Space","Sell_Rent",
-      "Link_line","Link_facbook","Name","Phone","Bathroom","Propertytype",
-      "Other_related_expenses","categoryId","Interest","floor",
+      "Property_Name", "Price", "Usable_Area", "Land_Size", "Bedrooms", "Description",
+      "Deposit_Amount", "Contract_Seller", "LinkMap", "Latitude", "Longitude",
+      "Province", "District", "Subdistrict", "Address", "Total_Rooms", "Year_Built",
+      "Nearby_Landmarks", "Additional_Amenities", "Parking_Space", "Sell_Rent",
+      "Link_line", "Link_facbook", "Name", "Phone", "Bathroom", "Propertytype",
+      "Other_related_expenses", "categoryId", "Interest", "floor",
     ];
 
-    const asInt   = ["Bedrooms","Bathroom","Total_Rooms","Parking_Space","floor"];
-    const asFloat = ["Usable_Area","Land_Size","Deposit_Amount","Price","Latitude","Longitude","Interest"];
+    const asInt = ["Bedrooms", "Bathroom", "Total_Rooms", "Parking_Space", "floor"];
+    const asFloat = ["Usable_Area", "Land_Size", "Deposit_Amount", "Price", "Latitude", "Longitude", "Interest"];
 
     const dataToUpdate = {};
     Object.entries(req.body).forEach(([k, v]) => {
@@ -347,7 +353,7 @@ exports.updatePost = async (req, res) => {
         return;
       }
 
-      if (asInt.includes(k))   { dataToUpdate[k] = toIntOrNull(v);   return; }
+      if (asInt.includes(k)) { dataToUpdate[k] = toIntOrNull(v); return; }
       if (asFloat.includes(k)) { dataToUpdate[k] = toFloatOrNull(v); return; }
 
       if (k === "Nearby_Landmarks") {

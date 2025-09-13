@@ -1,17 +1,18 @@
+
 const express = require("express");
 const app = express();
 const cors = require("cors");
-const morgan = require("morgan"); 
+const morgan = require("morgan");
 const { readdirSync } = require("fs");
 require("dotenv").config();
 const session = require("express-session");
 
-
+const { startNotificationSchedulers } = require("./Scheduler/notificationScheduler")
 app.use(morgan("dev"));
 
 
 const corsOptions = {
-    origin: 'http://localhost:5173', 
+    origin: 'http://localhost:5173',
     credentials: true,
 };
 app.use(cors(corsOptions));
@@ -29,7 +30,7 @@ app.use(session({
         httpOnly: true,
         secure: false,
         sameSite: "lax",
-        domain: 'localhost' 
+        domain: 'localhost'
     }
 }));
 
@@ -47,4 +48,7 @@ readdirSync("./routers").map((c) => app.use("/api", require("./routers/" + c)));
 
 
 const PORT = 8200;
-app.listen(PORT, () => console.log(`Server on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`Server on port ${PORT}`)
+    startNotificationSchedulers();
+});
