@@ -13,7 +13,7 @@ const {
   registerSeller,
 } = require("../controllers/auth");
 
-const { isAuthenticated, upload } = require("../middlewares/authCheck");
+const { isAuthenticated, upload } = require("../Middlewares/authCheck");
 
 // สมัคร/ยืนยัน/ล็อกอิน
 router.post("/preRegister", preRegister);
