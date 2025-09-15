@@ -182,18 +182,17 @@ exports.verifyandregister = async (req, res) => {
   }
 }
 
+// ใน controllers/authController.js
 exports.login = async (req, res) => {
   try {
     const { Email, Password } = req.body;
     const user = await prisma.user.findFirst({
-      where: {
-        Email: Email
-      },
+      where: { Email: Email },
       include: {
         Seller: true,
         Buyer: true,
       }
-    })
+    });
     if (!user) {
       return res.status(400).json({ message: "Email not found" });
     }
@@ -203,52 +202,31 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: "Password invalid" });
     }
 
-    let payload
+    // --- สร้าง Payload ที่สมบูรณ์ ---
+    // 1. สร้างข้อมูลพื้นฐานของ User
+    let payload = {
+      userId: user.id, // ID หลักของ User, เปลี่ยนชื่อจาก id เพื่อความชัดเจน
+      Email: user.Email,
+      userType: user.userType,
+      Phone: user.Phone,
+      First_name: user.First_name,
+      Last_name: user.Last_name,
+      image: user.image
+    };
 
-    if (user.userType === "Seller" && user.Seller) {
-      payload = {
-        id: user.id,
-        Email: user.Email,
-        userType: user.userType,
-        Phone: user.Phone,
-        First_name: user.First_name,
-        Last_name: user.Last_name,
-        image: user.image,
-        Seller: {
-          id: user.Seller.id,
-          National_ID: user.Seller.National_ID,
-          Company_Name: user.Seller.Company_Name,
-          RealEstate_License: user.Seller.RealEstate_License,
-          Status: user.Seller.Status,
-          StartTime: user.Seller.StartTime,
-        }
-      }
-    } else if (user.userType === "Buyer" && user.Buyer) {
-      payload = {
-        id: user.id,
-        Email: user.Email,
-        userType: user.userType,
-        Phone: user.Phone,
-        First_name: user.First_name,
-        Last_name: user.Last_name,
-        image: user.image,
-        Buyer: {
-          id: user.Buyer.id,
-          Age: user.Buyer.Age,
-          Occupation: user.Buyer.Occupation,
-          Monthly_Income: user.Buyer.Monthly_Income,
-          Family_Size: user.Buyer.Family_Size,
-          Preferred_Province: user.Buyer.Preferred_Province,
-          Preferred_District: user.Buyer.Preferred_District,
-          Parking_Needs: user.Buyer.Parking_Needs,
-          Nearby_Facilities: user.Buyer.Nearby_Facilities,
-          Lifestyle_Preferences: user.Buyer.Lifestyle_Preferences,
-          Special_Requirements: user.Buyer.Special_Requirements,
-          DateofBirth: user.Buyer.DateofBirth,
-          image: user.Buyer.image,
-        }
-      };
+    // 2. เพิ่มข้อมูล Buyer (User ทุกคนควรจะมี)
+    if (user.Buyer) {
+      payload.buyerId = user.Buyer.id; // 🔥 ID ของ Buyer สำหรับ Backend
+      payload.Buyer = user.Buyer;      // Object เต็มๆ สำหรับ Frontend
     }
+
+    // 3. ถ้าเป็น Seller ให้เพิ่มข้อมูล Seller ด้วย
+    if (user.userType === "Seller" && user.Seller) {
+      payload.sellerId = user.Seller.id; // 🔥 ID ของ Seller สำหรับ Backend
+      payload.Seller = user.Seller;      // Object เต็มๆ สำหรับ Frontend
+    }
+
+    // 4. บันทึก Payload ที่สมบูรณ์ลงใน session
     req.session.user = payload;
 
     req.session.save(err => {
@@ -256,24 +234,18 @@ exports.login = async (req, res) => {
         console.error("Session save error:", err);
         return res.status(500).json({ message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ" });
       }
-
-
-      console.log("Login successful, session created for user:", req.session.user.id);
-
+      console.log("Login successful, session created for user:", req.session.user.userId);
       res.status(200).json({
         message: "Login Sucess",
         user: req.session.user
       });
     });
 
-
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      message: "Server Error"
-    })
+    res.status(500).json({ message: "Server Error" });
   }
-}
+};
 
 exports.forgotPassword = async (req, res) => {
   try {
@@ -343,16 +315,15 @@ exports.resetPassword = async (req, res) => {
 
 exports.getProfile = async (req, res) => {
   try {
-    const { id } = req.session.user;
+    // 🔥 --- ส่วนที่แก้ไข --- 🔥
+    // เปลี่ยนจากการดึง id เป็น userId และตั้งชื่อตัวแปรใหม่ว่า id เพื่อให้โค้ดส่วนที่เหลือใช้ได้เหมือนเดิม
+    const { userId: id } = req.session.user;
+
     if (!id) return res.status(401).json({ message: "Unauthorized" });
 
     // query database ใหม่
-
-
-
-
     const user = await prisma.user.findUnique({
-      where: { id },
+      where: { id }, // <-- โค้ดส่วนนี้ยังใช้ตัวแปร id ได้เหมือนเดิม
       include: {
         Seller: true,
         Buyer: true,
@@ -363,7 +334,7 @@ exports.getProfile = async (req, res) => {
             Deposit_Amount: true,
             Post: {
               select: {
-                Property_Name:true
+                Property_Name: true
               }
             }
           }
@@ -401,7 +372,7 @@ exports.getProfile = async (req, res) => {
               }
             }
           }
-        } // include seller info
+        }
       }
     });
 

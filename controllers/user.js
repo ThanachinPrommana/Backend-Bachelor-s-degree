@@ -1,6 +1,7 @@
 const prisma = require("../config/prisma");
-const { Status_Seller, UserType,Status_Disposit } = require("@prisma/client");
+const { Status_Seller, UserType, Status_Disposit } = require("@prisma/client");
 const cloudinary = require("../utils/cloudinary");
+const { IncomingClientScope } = require("twilio/lib/jwt/ClientCapability");
 const getCloudinaryResourceDetails = async (publicId) => {
   try {
     const resource = await cloudinary.api.resource(publicId);
@@ -10,7 +11,6 @@ const getCloudinaryResourceDetails = async (publicId) => {
     return null;
   }
 };
-//admin
 // admin
 exports.updateStatusSeller = async (req, res) => {
   try {
@@ -214,14 +214,22 @@ exports.getUserProfile = async (req, res) => {
 // complete (รวม User + Buyer + Seller)
 exports.updateSeller = async (req, res) => {
   try {
-    const { id } = req.session.user || {};
-    if (!id) {
+    const sessionUser = req.session.user;
+    if (!sessionUser || !sessionUser.userId) {
       return res.status(401).json({
         message: "Unauthorized: Please log in to update your profile.",
       });
     }
 
-    const updatedUser = await prisma.$transaction(
+    // 2. ตรวจสอบสิทธิ์: เฉพาะ Seller เท่านั้นที่ควรจะอัปเดตโปรไฟล์ในหน้านี้
+    if (sessionUser.userType !== 'Seller') {
+      return res.status(403).json({ message: "Forbidden: Only sellers can update this profile." });
+    }
+
+    // 3. ใช้ ID ที่ถูกต้องจาก session
+    const { userId, sellerId, buyerId } = sessionUser;
+
+    const updatedUserResult = await prisma.$transaction(
       async (tx) => {
         const {
           // User
@@ -248,7 +256,7 @@ exports.updateSeller = async (req, res) => {
         // เช็คเลขบัตรประชาชนซ้ำ (ข้ามถ้าไม่ได้ส่งมา)
         if (National_ID) {
           const existingSeller = await tx.seller.findFirst({
-            where: { National_ID, userId: { not: id } },
+            where: { National_ID: National_ID, userId: { not: userId } },
           });
           if (existingSeller) {
             throw new Error("This National ID is already in use.");
@@ -308,14 +316,14 @@ exports.updateSeller = async (req, res) => {
 
         // แนบ nested update เฉพาะเมื่อมีข้อมูลจะอัปเดตจริง
         if (Object.keys(sellerDataToUpdate).length > 0) {
-          userDataToUpdate.Seller = { update: sellerDataToUpdate };
+          userDataToUpdate.Seller = { update: { where: { id: sellerId }, data: sellerDataToUpdate } };
         }
         if (Object.keys(buyerDataToUpdate).length > 0) {
-          userDataToUpdate.Buyer = { update: buyerDataToUpdate };
+          userDataToUpdate.Buyer = { update: { where: { id: buyerId }, data: buyerDataToUpdate } };
         }
 
         const user = await tx.user.update({
-          where: { id },
+          where: { id: userId },
           data: userDataToUpdate,
           include: { Seller: true, Buyer: true },
         });
@@ -324,15 +332,34 @@ exports.updateSeller = async (req, res) => {
       },
       { timeout: 10000 }
     );
+    const newSessionPayload = {
+      userId: updatedUserResult.id,
+      userType: updatedUserResult.userType,
+      First_name: updatedUserResult.First_name,
+      Last_name: updatedUserResult.Last_name,
+      Phone: updatedUserResult.Phone,
+      image: updatedUserResult.image,
+      buyerId: updatedUserResult.Buyer?.id,
+      sellerId: updatedUserResult.Seller?.id,
+      Buyer: updatedUserResult.Buyer,
+      Seller: updatedUserResult.Seller
+    };
 
     // cleanup
-    delete updatedUser.Password;
-    req.session.user = updatedUser;
+    delete newSessionPayload.Password;
 
-    res.json({
-      message: "User profile updated successfully",
-      user: updatedUser,
+    req.session.user = newSessionPayload;
+    req.session.save(err => {
+      if (err) {
+        console.error("Session update error after profile update:", err);
+        // ยังคงส่งข้อมูลกลับไปให้ user ได้ แม้ session จะ save ไม่สำเร็จ
+      }
+      res.json({
+        message: "User profile updated successfully",
+        user: newSessionPayload, // ส่งข้อมูลรูปแบบเดียวกับ session กลับไป
+      });
     });
+
   } catch (err) {
     console.log(err);
     res.status(err.message?.includes("in use") ? 400 : 500).json({
@@ -344,12 +371,14 @@ exports.updateSeller = async (req, res) => {
 // complete (อัปเดต User + Buyer ฝั่งผู้ซื้อ)
 exports.updateUser = async (req, res) => {
   try {
-    const { id } = req.session.user || {};
-    if (!id) {
+    const sessionUser = req.session.user;
+    if (!sessionUser || !sessionUser.userId) {
       return res.status(401).json({
         message: "Unauthorized: Please log in to update your profile.",
       });
     }
+    // ดึง ID ที่ถูกต้องจาก session
+    const { userId, buyerId } = sessionUser;
 
     const {
       // User
@@ -376,43 +405,71 @@ exports.updateUser = async (req, res) => {
     if (Phone !== undefined) dataToUpdate.Phone = Phone;
     if (image !== undefined) dataToUpdate.image = image;
 
-    const buyerDataToUpdate = {};
-    if (DateofBirth !== undefined) {
-      const d = new Date(DateofBirth);
-      if (!isNaN(d.getTime())) buyerDataToUpdate.DateofBirth = d;
-    }
-    if (Occupation !== undefined) buyerDataToUpdate.Occupation = Occupation;
-    if (Monthly_Income !== undefined) {
-      const n = Number(Monthly_Income);
-      if (!Number.isNaN(n)) buyerDataToUpdate.Monthly_Income = n;
-    }
-    if (Family_Size !== undefined) {
-      const n = Number(Family_Size);
-      if (!Number.isNaN(n)) buyerDataToUpdate.Family_Size = n;
-    }
-    if (Parking_Needs !== undefined) buyerDataToUpdate.Parking_Needs = Parking_Needs;
-    if (Nearby_Facilities !== undefined) buyerDataToUpdate.Nearby_Facilities = Nearby_Facilities;
-    if (Lifestyle_Preferences !== undefined) buyerDataToUpdate.Lifestyle_Preferences = Lifestyle_Preferences;
-    if (Special_Requirements !== undefined) buyerDataToUpdate.Special_Requirements = Special_Requirements;
-    if (Preferred_Province !== undefined) buyerDataToUpdate.Preferred_Province = Preferred_Province;
-    if (Preferred_District !== undefined) buyerDataToUpdate.Preferred_District = Preferred_District;
-
-    if (Object.keys(buyerDataToUpdate).length > 0) {
-      dataToUpdate.Buyer = { update: buyerDataToUpdate };
-    }
-
-    const Updateuser = await prisma.user.update({
-      where: { id },
-      data: dataToUpdate,
-      include: { Buyer: true },
+    const allowedUserFields = ["First_name", "Last_name", "Phone", "image"];
+    allowedUserFields.forEach(field => {
+      if (req.body[field] !== undefined) dataToUpdate[field] = req.body[field];
     });
 
-    if (Updateuser.Password) delete Updateuser.Password;
-    req.session.user = Updateuser;
+    const buyerDataToUpdate = {};
+    const allowedBuyerFields = [
+      "DateofBirth", "Occupation", "Monthly_Income", "Family_Size",
+      "Parking_Needs", "Nearby_Facilities", "Lifestyle_Preferences",
+      "Special_Requirements", "Preferred_Province", "Preferred_District"
+    ];
+    allowedBuyerFields.forEach(field => {
+      if (req.body[field] === undefined) return;
+      let value = req.body[field];
+      if (field === "DateofBirth") value = new Date(value);
+      if (field === "Monthly_Income" || field === "Family_Size") value = Number(value);
+      buyerDataToUpdate[field] = value;
+    });
 
-    res.json({
-      message: "User update success",
-      user: Updateuser,
+    if (Object.keys(buyerDataToUpdate).length > 0) {
+      // ตรวจสอบว่าผู้ใช้มีข้อมูล Buyer ให้อัปเดตหรือไม่
+      if (!buyerId) {
+        return res.status(400).json({ message: "This user does not have a buyer profile to update." });
+      }
+      dataToUpdate.Buyer = {
+        update: {
+          where: { id: buyerId },
+          data: buyerDataToUpdate
+        }
+      };
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId }, // ใช้ userId ที่ถูกต้อง
+      data: dataToUpdate,
+      include: { Buyer: true, Seller: true }, // include Seller ด้วยเผื่อเป็น Seller ที่มาอัปเดต
+    });
+
+    // 🔥 --- ส่วนที่แก้ไข --- 🔥
+    // 3. สร้าง session payload ใหม่ในรูปแบบที่ถูกต้อง
+    const newSessionPayload = {
+      userId: updatedUser.id,
+      userType: updatedUser.userType,
+      First_name: updatedUser.First_name,
+      Last_name: updatedUser.Last_name,
+      Phone: updatedUser.Phone,
+      image: updatedUser.image,
+      buyerId: updatedUser.Buyer?.id,
+      sellerId: updatedUser.Seller?.id, // ใส่ sellerId ไว้ด้วย (ถ้ามี)
+      Buyer: updatedUser.Buyer,
+      Seller: updatedUser.Seller, // ใส่ Seller object ไว้ด้วย (ถ้ามี)
+    };
+
+    delete newSessionPayload.Password; // ลบ Password ออกเพื่อความปลอดภัย
+
+    // 4. บันทึก session ใหม่และส่ง response กลับ
+    req.session.user = newSessionPayload;
+    req.session.save(err => {
+      if (err) {
+        console.error("Session update error after profile update:", err);
+      }
+      res.json({
+        message: "User profile updated successfully",
+        user: newSessionPayload,
+      });
     });
   } catch (err) {
     console.error(err);
@@ -423,30 +480,46 @@ exports.updateUser = async (req, res) => {
 //complete
 exports.updateimage = async (req, res) => {
   try {
-    const { id } = req.session.user;
+    // 🔥 --- ส่วนที่แก้ไข --- 🔥
+    // 1. ตรวจสอบและดึง userId ที่ถูกต้องจาก session
+    if (!req.session.user || !req.session.user.userId) {
+      return res.status(401).json({ message: "Unauthorized, please login first" });
+    }
+    const { userId } = req.session.user;
     const file = req.file;
 
     if (!file) {
       return res.status(400).json({ message: "No image uploaded" });
     }
 
-    const imageUrl = file.path || file.url;
-    const publicId = file.filename || file.public_id;
+    const imageUrl = file.path;
+    const publicId = file.filename;
 
     const updatedUser = await prisma.user.update({
-      where: { id },
+      where: { id: userId }, // <-- ใช้ userId ที่ถูกต้อง
       data: {
         image: imageUrl,
         publicId: publicId,
       },
     });
 
-    res.status(200).json({
-      message: "Image uploaded and user updated successfully",
-      image: {
-        url: updatedUser.image,
-        publicId: updatedUser.publicId,
-      },
+    // 🔥 --- ส่วนที่แก้ไข --- 🔥
+    // 2. อัปเดตข้อมูลรูปภาพใน session ปัจจุบัน
+    req.session.user.image = updatedUser.image;
+    req.session.user.publicId = updatedUser.publicId;
+
+    // 3. บันทึก session และส่ง response กลับ (Best Practice)
+    req.session.save(err => {
+      if (err) {
+        console.error("Session save error after image update:", err);
+        // แม้ session จะ save ไม่สำเร็จ แต่การอัปเดต DB สำเร็จแล้ว ให้ส่ง response กลับไปก่อน
+      }
+      res.status(200).json({
+        message: "Image uploaded and user updated successfully",
+        user: { // ส่งข้อมูล user ที่อัปเดตแล้วกลับไป
+          ...req.session.user
+        }
+      });
     });
 
   } catch (err) {
@@ -503,15 +576,14 @@ exports.updateimage = async (req, res) => {
 exports.useruploadDocument = async (req, res) => {
   try {
     const loggedInUser = req.session.user
-    if (!loggedInUser) {
-      res.status(401).json({
+    if (!loggedInUser || !loggedInUser.userId) {
+      return res.status(401).json({
         message: "Unauthorized: Please log in."
-      })
+      });
     }
-    const userId = loggedInUser.id;
+    const userId = loggedInUser.userId; // <-- ใช้ userId ที่ถูกต้อง
 
-
-    const { typeId, DocumentName, postId } = req.body
+    const { typeId, DocumentName, postId } = req.body;
     // const {id} = req.params
     const file = req.file;
     if (!file) {
@@ -668,10 +740,16 @@ exports.getpostBySeller = async (req, res) => {
 exports.deletePostBySeller = async (req, res) => {
   try {
     const { postId } = req.params
-    const userId = req.session.user?.id
-    if (!userId) {
+    if (!req.session.user || !req.session.user.userId) {
       return res.status(401).json({ message: "Unauthorized. Please log in." });
     }
+    const { userId, userType } = req.session.user;
+
+    // 2. ตรวจสอบสิทธิ์: เฉพาะ Seller เท่านั้นที่สามารถลบโพสต์ได้
+    if (userType !== 'Seller') {
+      return res.status(403).json({ message: "Forbidden. Only sellers can delete posts." });
+    }
+
     const postToDelete = await prisma.propertyPost.findUnique({
       where: {
         id: postId,
@@ -754,10 +832,14 @@ exports.deletePostBySeller = async (req, res) => {
 exports.searchFiltersSeller = async (req, res) => {
   try {
     // 1. ดึงข้อมูล user จาก session
-    const user = req.session.user;
-    if (!user || !user.id) {
-
+    if (!req.session.user || !req.session.user.userId) {
       return res.status(401).json({ success: false, message: 'กรุณาเข้าสู่ระบบก่อน' });
+    }
+    const { userId, userType } = req.session.user;
+
+    // 2. ตรวจสอบสิทธิ์: เฉพาะ Seller เท่านั้นที่สามารถค้นหาโพสต์ของตัวเองได้
+    if (userType !== 'Seller') {
+      return res.status(403).json({ success: false, message: 'Forbidden: Only sellers can access this resource.' });
     }
 
     // 2. ดึงคำค้นหา (query) จาก URL query string (เช่น /path?q=บ้าน)
@@ -765,7 +847,7 @@ exports.searchFiltersSeller = async (req, res) => {
 
     // 3. สร้างเงื่อนไขพื้นฐาน: ต้องเป็นโพสต์ของ user คนนี้เท่านั้น
     const whereClause = {
-      userId: user.id,
+      userId: userId,
     };
 
     if (q) {
@@ -803,22 +885,25 @@ exports.searchFiltersSeller = async (req, res) => {
 //complete
 exports.createdeposite = async (req, res) => {
   try {
-    const user = req.session.user
-
-    if (!user) {
+    const user = req.session.user;
+    if (!user || !user.userId) {
       return res.status(401).json({
         message: "Unauthorized: Please log in to make a deposit."
-      })
+      });
     }
-    const userId = user.id
-    console.log("UserID:", userId)
-    const { postId, documentId } = req.body
+
+
+
+    // 3. ใช้ ID ที่ถูกต้องจาก session
+    const userId = user.userId;
+    const { postId, documentId } = req.body;
 
     if (!postId || !documentId) {
       return res.status(400).json({
-        message: "Missing required fields: postId, depositAmount, and documentId are required."
+        message: "Missing required fields: postId and documentId are required."
       });
     }
+
     const post = await prisma.propertyPost.findUnique({
       where: {
         id: postId
@@ -849,6 +934,11 @@ exports.createdeposite = async (req, res) => {
     if (!document) {
       return res.status(404).json({ message: "Associated document not found." });
     }
+    if (document.userId !== userId) {
+      return res.status(403).json({
+        message: `Action forbidden: Document status is '${document.Review_Status}', not 'APPROVED'.`
+      });
+    }
     if (document.Review_Status !== "APPROVED") {
       return res.status(403).json({
         message: `Action forbidden: Document status is '${document.Review_Status}', not 'APPROVED'.`
@@ -871,23 +961,25 @@ exports.createdeposite = async (req, res) => {
       });
     }
 
-    const newDeposit = await prisma.deposit.create({
-      data: {
-        postId: postId,
-        userId: userId,
-        Deposit_Amount: depositAmountFromPost,
-        Deposit_Status: "PENDING"
-      }
-    })
+    const newDeposit = await prisma.$transaction(async (tx) => {
+      const deposit = await tx.deposit.create({
+        data: {
+          postId: postId,
+          userId: userId, // <-- ใช้ userId ที่ถูกต้อง
+          Deposit_Amount: depositAmountFromPost,
+          Deposit_Status: "PENDING"
+        }
+      });
 
-    await prisma.documentUpload.update({
-      where: {
-        id: documentId
-      },
-      data: {
-        depositId: newDeposit.id
-      }
-    })
+      await tx.documentUpload.update({
+        where: { id: documentId },
+        data: { depositId: deposit.id }
+      });
+
+      return deposit;
+    });
+
+    // แจ้งเตือนไปยังเจ้าของโพสต์ (Seller)
     await prisma.notification.create({
       data: {
         userId: post.userId,
@@ -910,13 +1002,11 @@ exports.createdeposite = async (req, res) => {
         referenceId: newDeposit.id,
       },
     });
+
     res.status(201).json({
       message: "Deposit created successfully. Waiting for seller confirmation.",
       deposit: newDeposit,
     });
-    // res.json({
-    //   message:"Helllo"
-    // })
   } catch (err) {
     console.error("Error creating deposit:", err);
     res.status(500).json({ message: "Server Error" });
@@ -926,11 +1016,16 @@ exports.createdeposite = async (req, res) => {
 exports.updateDepositStatus = async (req, res) => {
   try {
     const user = req.session.user;
-    if (!user) {
+    if (!user || !user.userId) {
       return res.status(401).json({ message: "Unauthorized: โปรดเข้าสู่ระบบ" });
     }
-    const sellerId = user.id;
 
+    // 2. ตรวจสอบสิทธิ์: เฉพาะ Seller เท่านั้นที่สามารถอัปเดตสถานะได้
+    if (user.userType !== 'Seller') {
+      return res.status(403).json({ message: "Forbidden: Only sellers can update deposit status." });
+    }
+
+    const sellerUserId = user.userId; // ID ของ User ที่เป็น Seller
     const { depositId } = req.params;
     const { status } = req.body;
 
@@ -947,7 +1042,7 @@ exports.updateDepositStatus = async (req, res) => {
         include: {
           // เปลี่ยนชื่อ relation ให้ตรงกับ Prisma ของคุณ
           // ถ้า relation ชื่อ propertyPost:
-          propertyPost: { select: { userId: true } },
+          Post: { select: { userId: true } },
           // ถ้า relation ชื่อ Post ให้ใช้:
           // Post: { select: { userId: true } },
         },
@@ -956,8 +1051,8 @@ exports.updateDepositStatus = async (req, res) => {
       if (!deposit) throw new Error("Deposit not found: ไม่พบรายการมัดจำนี้");
 
       // ตรวจเจ้าของโพสต์ให้ตรงกับ relation ที่ใช้ด้านบน
-      const postOwnerId = deposit.propertyPost?.userId /* หรือ deposit.Post?.userId */;
-      if (postOwnerId !== sellerId) {
+      const postOwnerId = deposit.Post?.userId /* หรือ deposit.Post?.userId */;
+      if (postOwnerId !== sellerUserId) {
         throw new Error("Forbidden: คุณไม่มีสิทธิ์ในการจัดการรายการมัดจำนี้");
       }
       if (deposit.Deposit_Status !== "PENDING") {
@@ -1017,9 +1112,10 @@ exports.updateDepositStatus = async (req, res) => {
 exports.searchFillerDiposit = async (req, res) => {
   try {
     const user = req.session.user
-    if (!user || !user.id) {
+    if (!user || !user.userId) {
       return res.status(401).json({ success: false, message: 'กรุณาเข้าสู่ระบบก่อน' });
     }
+    const userId = user.userId;
     const {
       q,
       status,
@@ -1028,7 +1124,7 @@ exports.searchFillerDiposit = async (req, res) => {
     } = req.body
 
     const where = {
-      userId: user.id
+      userId: userId
     }
 
     if (q) {
@@ -1036,7 +1132,7 @@ exports.searchFillerDiposit = async (req, res) => {
         { Post: { Property_Name: { contains: q, mode: 'insensitive' } } },
       ];
     }
-    
+
     if (status && Object.values(Status_Disposit).includes(status)) {
       where.Deposit_Status = status;
     }
@@ -1046,28 +1142,28 @@ exports.searchFillerDiposit = async (req, res) => {
       if (minAmount) {
         where.Deposit_Amount.gte = parseFloat(minAmount)
       }
-      if (maxAmount){
+      if (maxAmount) {
         where.Deposit_Amount.lte = parseFloat(maxAmount);
       }
     }
 
     const deposits = await prisma.deposit.findMany({
       where,
-      include:{
-        Post:{
-          select:{
-            id:true,
-            Property_Name:true,
+      include: {
+        Post: {
+          select: {
+            id: true,
+            Property_Name: true,
           }
         }
       },
-      orderBy:{
-        createdAt:"desc"
+      orderBy: {
+        createdAt: "desc"
       }
     })
     res.status(200).json({
-      message:"Success",
-      data:deposits
+      message: "Success",
+      data: deposits
     })
 
   } catch (err) {
@@ -1075,6 +1171,426 @@ exports.searchFillerDiposit = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 }
+//createDateSlot
+exports.createDateTimeSlot = async (req, res) => {
+  if (!req.session || !req.session.user) {
+    return res.status(401).json({ message: 'Unauthorized: กรุณาเข้าสู่ระบบก่อน' });
+  }
+
+  // 🔥 --- ส่วนที่แก้ไข --- 🔥
+  // 1. ดึง sellerId จาก session ไม่ใช่ userId
+  const sellerId = req.session.user.sellerId;
+
+  // 2. ตรวจสอบว่า user คนนี้มี sellerId หรือไม่ (เป็น Seller จริงหรือไม่)
+  if (!sellerId) {
+    return res.status(403).json({ message: 'Forbidden: คุณไม่มีสิทธิ์ในการสร้างช่วงเวลา' });
+  }
+
+  const { date, timeSlots } = req.body;
+
+  if (!date || !timeSlots || !Array.isArray(timeSlots) || timeSlots.length === 0) {
+    return res.status(400).json({
+      message: 'กรุณาระบุ date (YYYY-MM-DD) และ timeSlots ที่เป็น array',
+    });
+  }
+
+  try {
+    const slotsToCreate = [];
+
+    for (const slot of timeSlots) {
+      if (!slot.startTime || !slot.endTime) {
+        throw new Error('ข้อมูลใน timeSlots ไม่สมบูรณ์ กรุณาระบุ startTime และ endTime');
+      }
+
+      const startDate = new Date(`${date}T${slot.startTime}:00`);
+      const endDate = new Date(`${date}T${slot.endTime}:00`);
+
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error(`รูปแบบเวลาไม่ถูกต้อง: ${slot.startTime}-${slot.endTime}`);
+      }
+      if (startDate >= endDate) {
+        throw new Error(`เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มต้น: ${slot.startTime}-${slot.endTime}`);
+      }
+
+      const existingSlot = await prisma.dateTimeSlot.findFirst({
+        where: {
+          sellerId: sellerId, // <-- ค่านี้จะถูกต้องแล้ว
+          AND: [{ startTime: { lt: endDate } }, { endTime: { gt: startDate } }],
+        },
+      });
+
+      if (existingSlot) {
+        throw new Error(`ช่วงเวลา ${slot.startTime}-${slot.endTime} ทับซ้อนกับ Slot ที่มีอยู่แล้ว`);
+      }
+
+      slotsToCreate.push({
+        startTime: startDate,
+        endTime: endDate,
+        sellerId: sellerId, // <-- ค่านี้จะถูกต้องแล้ว
+      });
+    }
+
+    for (let i = 0; i < slotsToCreate.length; i++) {
+      for (let j = i + 1; j < slotsToCreate.length; j++) {
+        const slotA = slotsToCreate[i];
+        const slotB = slotsToCreate[j];
+        if (slotA.startTime < slotB.endTime && slotA.endTime > slotB.startTime) {
+          throw new Error(`ข้อมูลช่วงเวลาที่ส่งมาทับซ้อนกันเอง`);
+        }
+      }
+    }
+
+    const result = await prisma.dateTimeSlot.createMany({
+      data: slotsToCreate,
+    });
+
+    res.status(201).json({
+      message: `สร้างช่วงเวลาสำเร็จทั้งหมด ${result.count} รายการ`,
+      count: result.count,
+    });
+
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์' });
+  }
+};
+
+//createbooking
+exports.createBooking = async (req, res) => {
+  if (!req.session.user || !req.session.user.userId || !req.session.user.userType) {
+    return res.status(401).json({ message: 'Unauthorized: กรุณาเข้าสู่ระบบก่อน' });
+  }
+  
+  const { userId: bookerId, userType: bookerUserType, buyerId: sessionBuyerId, sellerId: sessionSellerId } = req.session.user;
+  const { dateTimeSlotId, buyerId: buyerIdFromRequest } = req.body;
+
+  if (!dateTimeSlotId) {
+    return res.status(400).json({ message: 'กรุณาระบุ dateTimeSlotId' });
+  }
+
+  // 2. ตรวจสอบเงื่อนไขเฉพาะของ Seller
+  // --- เปลี่ยนจาก 'SELLER' เป็นค่าใน Enum UserType ของคุณ (ถ้ามี) ---
+  // สมมติว่าค่าใน session คือ 'Seller'
+  if (bookerUserType === 'Seller' && !buyerIdFromRequest) {
+    return res.status(400).json({ message: 'สำหรับผู้ขาย กรุณาระบุ buyerId ของลูกค้าที่ต้องการนัดหมาย' });
+  }
+
+  try {
+
+    const newBooking = await prisma.$transaction(async (tx) => {
+      const slot = await tx.dateTimeSlot.findUnique({
+        where: { id: dateTimeSlotId },
+      });
+
+      if (!slot) {
+        throw new Error('NOT_FOUND');
+      }
+      if (slot.isBooked) {
+        throw new Error('ALREADY_BOOKED');
+      }
+
+      let buyerId;
+      let sellerId;
+
+      // 3. กำหนดค่า buyerId และ sellerId ตาม userType ของผู้จอง
+      if (bookerUserType === 'Buyer') {
+        buyerId = sessionBuyerId;
+        sellerId = slot.sellerId;
+      } else if (bookerUserType === 'Seller') {
+        // --- Security Check ---
+        if (slot.sellerId !== sessionSellerId) {
+          throw new Error('FORBIDDEN');
+        }
+        buyerId = buyerIdFromRequest;
+        sellerId = sessionSellerId;
+      } else {
+        throw new Error('INVALID_USER_TYPE');
+      }
+
+      // อัปเดต Slot ให้เป็น isBooked = true
+      await tx.dateTimeSlot.update({
+        where: { id: dateTimeSlotId },
+        data: { isBooked: true },
+      });
+
+      // สร้าง Booking
+      const booking = await tx.booking.create({
+        data: {
+          buyerId,
+          sellerId,
+          dateTimeSlotId,
+        },
+      });
+
+      return booking;
+    });
+
+    res.status(201).json({
+      message: 'การจองนัดหมายสำเร็จ',
+      booking: newBooking,
+    });
+
+  } catch (error) {
+    // 5. จัดการ Error ที่เกิดขึ้นระหว่าง Transaction
+    if (error.message === 'NOT_FOUND') {
+      return res.status(404).json({ message: 'ไม่พบช่วงเวลาที่คุณต้องการจอง' });
+    }
+    if (error.message === 'ALREADY_BOOKED') {
+      return res.status(409).json({ message: 'ขออภัย ช่วงเวลานี้ถูกจองไปแล้ว' }); // 409 Conflict
+    }
+
+    // สำหรับ Error อื่นๆ ที่ไม่คาดคิด
+    console.error('เกิดข้อผิดพลาดในการสร้าง Booking:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์' });
+  }
+};
+exports.revmovedeposit = async (req, res) => {
+  try {
+    const user = req.session.user
+    if (!user || !user.userId) {
+      return res.status(401).json({ message: "Unauthorized: กรุณาเข้าสู่ระบบก่อน" });
+    }
+    const userName = `${user.First_name} ${user.Last_name}`
+    const userId = user.userId;
+    const { id: depositId } = req.params
+    const deposit = await prisma.deposit.findUnique({
+      where: {
+        id: depositId
+      },
+      include: {
+        Post: {
+          select: {
+            id: true,
+            Property_Name: true,
+            userId: true
+          }
+        }
+      }
+    })
+    if (!deposit) {
+      return res.status(404).json({ message: "ไม่พบรายการมัดจำที่คุณต้องการลบ" });
+    }
+    if (deposit.userId !== userId) {
+      return res.status(403).json({ message: "Forbidden: คุณไม่มีสิทธิ์ในการลบรายการมัดจำนี้" });
+    }
+    if (deposit.Deposit_Status !== "PENDING") {
+      return res.status(409).json({ // 409 Conflict
+        message: `ไม่สามารถลบได้ เนื่องจากรายการมัดจำนี้อยู่ในสถานะ "${deposit.Deposit_Status}" แล้ว`
+      });
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.documentUpload.updateMany({
+        where: {
+          depositId: depositId
+        },
+        data: {
+          deposit: null
+        }
+      })
+      await tx.deposit.delete({
+        where: {
+          id: depositId
+        }
+      })
+      await tx.notification.create({
+        data: {
+          userId: deposit.Post.userId, // ID ของเจ้าของโพสต์
+          Title: "มีการยกเลิกการมัดจำ",
+          Message: `ผู้ใช้ ${userName} ได้ยกเลิกการมัดจำสำหรับโพสต์ "${deposit.Post.Property_Name}" ของคุณ`,
+          Status: "UNREAD",
+          relatedProcess: "DEPOSIT_CANCELLED",
+          referenceId: deposit.Post.id,
+        }
+      })
+    })
+    res.json({
+      message: "ลบรายการมัดจำสำเร็จ",
+      deleteDeposit: deposit
+    })
+  } catch (err) {
+    console.error("Error removing deposit:", err);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดที่เซิร์ฟเวอร์" });
+  }
+}
+exports.removeTimeSlot = async (req, res) => {
+  try {
+    // 1. ตรวจสอบ session และสิทธิ์การเป็นผู้ขาย
+    const user = req.session.user;
+    if (!user || !user.userId || user.userType !== 'Seller') {
+      return res.status(403).json({ message: "Forbidden: เฉพาะผู้ขายเท่านั้นที่สามารถลบช่วงเวลาได้" });
+    }
+    const sellerId = user.sellerId;
+    if (!sellerId) {
+      return res.status(403).json({ message: "Forbidden: ข้อมูลผู้ขายไม่สมบูรณ์" });
+    }
+
+    // 2. ดึง ID ของช่วงเวลาที่จะลบจาก URL params
+    const { timeSlotId } = req.params;
+
+    // 3. ค้นหาช่วงเวลานั้นในฐานข้อมูล
+    const timeSlot = await prisma.dateTimeSlot.findUnique({
+      where: { id: timeSlotId },
+    });
+
+    // 4. ตรวจสอบว่ามีช่วงเวลานี้อยู่จริงหรือไม่
+    if (!timeSlot) {
+      return res.status(404).json({ message: "ไม่พบช่วงเวลาที่ต้องการลบ" });
+    }
+
+    // 5. ตรวจสอบความเป็นเจ้าของ (Authorization)
+    if (timeSlot.sellerId !== sellerId) {
+      return res.status(403).json({ message: "Forbidden: คุณไม่มีสิทธิ์ลบช่วงเวลาของผู้ขายท่านอื่น" });
+    }
+
+    // 6. 🔥 แก้ไข: ใช้ Transaction เพื่อลบ Booking และ DateTimeSlot พร้อมกัน
+    const deletedSlot = await prisma.$transaction(async (tx) => {
+      // 6.1 ลบข้อมูลการจอง (Booking) ที่เกี่ยวข้องออกไปก่อน
+      // ใช้ deleteMany เพื่อไม่ให้เกิด error หากไม่มีการจอง
+      await tx.booking.deleteMany({
+        where: { dateTimeSlotId: timeSlotId },
+      });
+
+      // 6.2 ลบช่วงเวลา (DateTimeSlot)
+      const result = await tx.dateTimeSlot.delete({
+        where: { id: timeSlotId },
+      });
+
+      return result;
+    });
+
+    // 7. ส่ง Response กลับไปว่าสำเร็จ พร้อมกับข้อมูลที่ถูกลบ
+    res.status(200).json({
+      message: "ลบช่วงเวลาและข้อมูลการจองที่เกี่ยวข้องสำเร็จ",
+      deletedSlot: deletedSlot,
+    });
+
+  } catch (err) {
+    console.error("Error removing time slot:", err);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดที่เซิร์ฟเวอร์" });
+  }
+};
+exports.removeBooking = async (req, res) => {
+  try {
+    const user = req.session.user
+    if (!user || !user.userId) {
+      return res.status(401).json({ message: "Unauthorized: กรุณาเข้าสู่ระบบก่อน" });
+    }
+    const { userId, First_name, Last_name } = user
+    const userName = `${First_name} ${Last_name}`;
+    const { bookingId } = req.params
+
+    const booking = await prisma.booking.findUnique({
+      where: {
+        id: bookingId
+      },
+      include: {
+        Buyer: {
+          select: {
+            userId: true
+          }
+        },
+        Seller: {
+          select: {
+            userId: true
+          }
+        },
+        dateTimeSlot: {
+          select: {
+            id: true,
+            startTime: true
+          }
+        }
+      }
+    })
+    if (!booking) {
+      return res.status(404).json({
+        message: "ไม่พบข้อมูลการจอง"
+      })
+    }
+    const isBuyer = booking.Buyer.userId === userId
+    const isSeller = booking.Seller.userId === userId
+    if (!isBuyer && !isSeller) {
+      return res.status(403).json({ message: "Forbidden: คุณไม่มีสิทธิ์ในการยกเลิกการจองนี้" });
+    }
+    const deletedBooking = await prisma.$transaction(async (tx) => {
+      await tx.dateTimeSlot.update({
+        where: {
+          id: booking.dateTimeSlot
+        },
+        data: {
+          isBooked: false
+        }
+      })
+      const result = tx.booking.delete({
+        where: {
+          id: bookingId
+        }
+      })
+      let notificationRecipientId
+      let notificationMessage
+      const appointmentTime = new Date(booking.dateTimeSlot.startTime).toLocaleString("th-TH")
+
+      if (isBuyer) {
+        notificationRecipientId = booking.Seller.userId
+        notificationMessage = `ผู้ใช้ ${userName} ได้ยกเลิกการนัดหมายในวันที่ ${appointmentTime}`
+      } else {
+        notificationRecipientId = booking.Buyer.userId;
+        notificationMessage = `ผู้ขาย ${userName} ได้ยกเลิกการนัดหมายของคุณในวันที่ ${appointmentTime}`;
+      }
+      await tx.notification.create({
+        data: {
+          userId: notificationRecipientId,
+          Title: "มีการยกเลิกการนัดหมาย",
+          Message: notificationMessage,
+          relatedProcess: "BOOKING_CANCELLED",
+          referenceId: booking.dateTimeSlot.id
+        }
+      })
+      return result
+    })
+
+    res.json({
+      message:"ยกเลิกการจองสำเร็จ",
+      deletedBooking:deletedBooking
+    })
+  } catch (err) {
+    console.log(err)
+    res.status(500).json({
+      message:"Server Error"
+    })
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
