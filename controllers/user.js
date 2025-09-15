@@ -1514,7 +1514,7 @@ exports.removeBooking = async (req, res) => {
     const deletedBooking = await prisma.$transaction(async (tx) => {
       await tx.dateTimeSlot.update({
         where: {
-          id: booking.dateTimeSlot
+          id: booking.dateTimeSlot.id
         },
         data: {
           isBooked: false
@@ -1542,7 +1542,8 @@ exports.removeBooking = async (req, res) => {
           Title: "มีการยกเลิกการนัดหมาย",
           Message: notificationMessage,
           relatedProcess: "BOOKING_CANCELLED",
-          referenceId: booking.dateTimeSlot.id
+          referenceId: booking.dateTimeSlot.id,
+          Status:"UNREAD"
         }
       })
       return result

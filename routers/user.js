@@ -35,7 +35,9 @@ const {
 
   createBooking,
 
-  createDateTimeSlot
+  createDateTimeSlot,
+  removeTimeSlot,
+  removeBooking
 } = require("../controllers/user");
 
 const upload = require("../Middlewares/upload");
@@ -107,9 +109,12 @@ router.patch("/update/status/deposit/:depositId", isAuthenticated, updateDeposit
 
 router.post("/document", uploadDocument.single("document"), useruploadDocument);
 
-//CreateDateSlot
+//DateSlot
 router.post("/seller/slot", isAuthenticated, isSeller, createDateTimeSlot);
-
-//CreateBooking
+router.delete("/seller/remove/:timeSlotId",isAuthenticated,removeTimeSlot)
+//Booking
 router.post("/user/booking", isAuthenticated, createBooking);
+router.delete("/user/remove/:bookingId",isAuthenticated,removeBooking)
+
+
 module.exports = router;

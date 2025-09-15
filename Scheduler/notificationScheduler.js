@@ -4,11 +4,9 @@ import prisma from "../config/prisma.js";
 // --- ฟังก์ชันที่ 1: ตรวจสอบและส่งการแจ้งเตือนล่วงหน้า ---
 export const checkAndSendReminders = async () => {
   console.log('⏰ [Scheduler] Running job: Checking for TOMORROW appointments...');
-
   const now = new Date();
   const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
   const endOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59);
-
   try {
     const upcomingBookings = await prisma.booking.findMany({
       where: {
@@ -17,21 +15,17 @@ export const checkAndSendReminders = async () => {
           startTime: { gte: startOfTomorrow, lte: endOfTomorrow },
         },
       },
-      // ✅ แก้ไข: include user (ตัวเล็ก) ที่ซ้อนอยู่ข้างใน
       include: { Buyer: { include: { user: true } }, Seller: { include: { user: true } }, dateTimeSlot: true },
     });
-
     if (upcomingBookings.length === 0) {
-      console.log('✅ [Scheduler] No upcoming reminders to send for tomorrow.');
+      console.log('[Scheduler] No upcoming reminders to send for tomorrow.');
       return;
     }
-
     const notificationsToCreate = upcomingBookings.flatMap(booking => [
       {
         userId: booking.Buyer.userId,
         referenceId: booking.id,
         Title: 'แจ้งเตือนนัดหมายวันพรุ่งนี้',
-        // ✅ แก้ไข: เข้าถึงผ่าน .user (ตัวเล็ก)
         Message: `คุณมีนัดหมายกับ ${booking.Seller.user.First_name} ในวันพรุ่งนี้ เวลา ${booking.dateTimeSlot.startTime.toLocaleTimeString('th-TH')} น.`,
         Status: 'UNREAD',
         relatedProcess: 'APPOINTMENT_REMINDER',
@@ -40,13 +34,11 @@ export const checkAndSendReminders = async () => {
         userId: booking.Seller.userId,
         referenceId: booking.id,
         Title: 'แจ้งเตือนนัดหมายวันพรุ่งนี้',
-        // ✅ แก้ไข: เข้าถึงผ่าน .user (ตัวเล็ก)
         Message: `คุณมีนัดหมายกับ ${booking.Buyer.user.First_name} ในวันพรุ่งนี้ เวลา ${booking.dateTimeSlot.startTime.toLocaleTimeString('th-TH')} น.`,
         Status: 'UNREAD',
         relatedProcess: 'APPOINTMENT_REMINDER',
       }
     ]);
-
     await prisma.$transaction([
       prisma.notification.createMany({ data: notificationsToCreate }),
       prisma.booking.updateMany({
@@ -62,12 +54,10 @@ export const checkAndSendReminders = async () => {
 
 // --- ฟังก์ชันที่ 2: ตรวจสอบและส่งการแจ้งเตือนใน "วันนัดหมาย" ---
 export const checkAndSendDayOfAlerts = async () => {
-  console.log('🚨 [Scheduler] Running job: Checking for TODAY appointments...');
-
+  console.log('[Scheduler] Running job: Checking for TODAY appointments...');
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-
   try {
     const todaysBookings = await prisma.booking.findMany({
       where: {
@@ -78,12 +68,10 @@ export const checkAndSendDayOfAlerts = async () => {
       },
       include: { Buyer: { include: { user: true } }, Seller: { include: { user: true } }, dateTimeSlot: true },
     });
-
     if (todaysBookings.length === 0) {
-      console.log('✅ [Scheduler] No appointments today to send alerts for.');
+      console.log('[Scheduler] No appointments today to send alerts for.');
       return;
     }
-
     const notificationsToCreate = todaysBookings.flatMap(booking => [
       {
         userId: booking.Buyer.userId,
@@ -102,7 +90,6 @@ export const checkAndSendDayOfAlerts = async () => {
         relatedProcess: 'APPOINTMENT_ALERT',
       }
     ]);
-
     await prisma.$transaction([
       prisma.notification.createMany({ data: notificationsToCreate }),
       prisma.booking.updateMany({
@@ -110,7 +97,7 @@ export const checkAndSendDayOfAlerts = async () => {
         data: { isDayOfAlertSent: true },
       }),
     ]);
-    console.log(`🚀 [Scheduler] Successfully sent ${notificationsToCreate.length} day-of alerts.`);
+    console.log(`[Scheduler] Successfully sent ${notificationsToCreate.length} day-of alerts.`);
   } catch (error) {
     console.error('[Scheduler] Error processing day-of alerts:', error);
   }
@@ -120,7 +107,6 @@ export const checkAndSendDayOfAlerts = async () => {
 export const checkAndSendAtTimeAlerts = async () => {
   const now = new Date();
   const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
-
   try {
     const dueBookings = await prisma.booking.findMany({
       where: {
@@ -131,13 +117,10 @@ export const checkAndSendAtTimeAlerts = async () => {
       },
       include: { Buyer: { include: { user: true } }, Seller: { include: { user: true } }, dateTimeSlot: true },
     });
-
     if (dueBookings.length === 0) {
       return;
     }
-
     console.log(`🔥 [Scheduler] Found ${dueBookings.length} appointments due right now!`);
-
     const notificationsToCreate = dueBookings.flatMap(booking => [
       {
         userId: booking.Buyer.userId,
@@ -156,7 +139,6 @@ export const checkAndSendAtTimeAlerts = async () => {
         relatedProcess: 'APPOINTMENT_NOW',
       }
     ]);
-
     await prisma.$transaction([
       prisma.notification.createMany({ data: notificationsToCreate }),
       prisma.booking.updateMany({
@@ -170,21 +152,46 @@ export const checkAndSendAtTimeAlerts = async () => {
   }
 };
 
+// --- 🔥 ฟังก์ชันที่ 4 (ใหม่): ลบ Slot ที่เลยเวลาและยังไม่ถูกจอง ---
+export const cleanupExpiredSlots = async () => {
+  console.log('🧹 [Scheduler] Running job: Cleaning up expired, unbooked time slots...');
+  const now = new Date();
+  try {
+    const result = await prisma.dateTimeSlot.deleteMany({
+      where: {
+        endTime: {
+          lt: now // lt = less than (น้อยกว่าเวลาปัจจุบัน)
+        },
+        isBooked: false // และยังไม่ถูกจอง
+      }
+    });
+
+    if (result.count > 0) {
+      console.log(`✅ [Scheduler] Successfully cleaned up ${result.count} expired slots.`);
+    }
+  } catch (error) {
+    console.error('[Scheduler] Error during expired slot cleanup:', error);
+  }
+};
+
 // --- ฟังก์ชันหลักสำหรับเริ่ม Scheduler ทั้งหมด ---
 export const startNotificationSchedulers = () => {
   console.log('🔔 Initializing notification schedulers...');
-
   cron.schedule('0 9 * * *', checkAndSendReminders, {
     timezone: "Asia/Bangkok",
   });
-
   cron.schedule('0 8 * * *', checkAndSendDayOfAlerts, {
     timezone: "Asia/Bangkok",
   });
-
   cron.schedule('* * * * *', checkAndSendAtTimeAlerts, {
     timezone: "Asia/Bangkok",
   });
 
-  console.log('⏰ All notification schedulers have been started.');
+  // 🔥 เพิ่ม: ตั้งเวลาให้ฟังก์ชันลบข้อมูลทำงานทุกชั่วโมง
+  cron.schedule('0 * * * *', cleanupExpiredSlots, { // ทำงานทุกชั่วโมง ณ นาทีที่ 0
+    timezone: "Asia/Bangkok",
+  });
+
+  console.log('⏰ All notification schedulers have been started (Reminders, Alerts, Cleanup).');
 };
+

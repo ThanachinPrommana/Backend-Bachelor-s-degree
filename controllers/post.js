@@ -1,4 +1,5 @@
 // controllers/post.js
+const Video = require("twilio/lib/rest/Video");
 const prisma = require("../config/prisma");
 const cloudinary = require("../utils/cloudinary");
 const {
@@ -103,7 +104,7 @@ exports.createpost = async (req, res) => {
         ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
         user: { connect: { id: userId } },
         Seller: { connect: { id: sellerId } },
-        
+
         Image: {
           create: imageFiles.map((file) => ({
             asset_id: file.asset_id,
@@ -265,6 +266,12 @@ exports.getPost = async (req, res) => {
         Longitude: true,
         Other_related_expenses: true,
         Status_post: true,
+        Video: {
+          select: {
+            url: true,
+            secure_url: true
+          }
+        }
       },
     });
 
