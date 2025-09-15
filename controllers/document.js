@@ -1,89 +1,114 @@
 // controllers/document.js
+const prisma = require("../config/prisma");
+const cloudinary = require("../utils/cloudinary");
 
-// const prisma = require("@prisma/client")
-const prisma = require("../config/prisma")
-const cloudinary = require("../utils/cloudinary")
-//complete
+// ---------- Helpers ----------
+const getSessionUserId = (req) => {
+  const u = req.session?.user;
+  return u?.userId ?? u?.id ?? null; // รองรับทั้ง userId และ id
+};
+
+const getSessionUserType = (req) => {
+  const t = req.session?.user?.userType ?? req.session?.user?.role ?? "";
+  return String(t).toUpperCase(); // เทียบแบบตัวใหญ่
+};
+
+// แปลง documentId ให้เข้ากับชนิดใน Prisma (ถ้าเป็น Int)
+const coerceId = (raw) => {
+  if (raw == null) return raw;
+  // ถ้าเป็น string ตัวเลขล้วน → Number, อย่างอื่นคงเดิม (เช่น uuid)
+  return /^\d+$/.test(String(raw)) ? Number(raw) : raw;
+};
+
+// ========== อนุมัติ/ปฏิเสธเอกสาร ==========
 exports.approveDocument = async (req, res) => {
-    try {
+  try {
+    const sessionUserId = getSessionUserId(req);
+    if (!sessionUserId) {
+      return res.status(401).json({ message: "Unauthorized, please login first" });
+    }
 
+    const userType = getSessionUserType(req);
+    if (userType !== "SELLER") {
+      return res.status(403).json({
+        message: "Forbidden: Only sellers can approve documents.",
+      });
+    }
 
-        if (!req.session.user) {
-            return res.status(401).json({ message: "Unauthorized, please login first" });
-        }
+    const { documentId: rawId } = req.params;
+    const documentId = coerceId(rawId);
 
-        const { userId: approverId, userType } = req.session.user;
-
-        if (userType !== 'Seller') {
-            return res.status(403).json({
-                message: "Forbidden: Only sellers can approve documents."
-            });
-        }
-
-        const { documentId } = req.params
-
-        const { status } = req.body
-
-        if (!['APPROVED', 'REJECTED'].includes(status)) {
-            return res.status(400).json({ message: "Invalid status value." });
-        }
+    const { status } = req.body || {};
+    if (!["APPROVED", "REJECTED"].includes(String(status))) {
+      return res.status(400).json({ message: "Invalid status value." });
+    }
 
     const documentToUpdate = await prisma.documentUpload.findUnique({
       where: { id: documentId },
       include: {
-        Post: { select: { userId: true } }, // เจ้าของโพสต์
+        Post: { select: { userId: true } }, // เจ้าของโพสต์ (Seller)
       },
     });
 
-        if (!documentToUpdate) {
-            return res.status(404).json({ message: "Document not found" });
-        }
-        if (documentToUpdate.Post.userId !== approverId) {
-            return res.status(403).json({ message: "Forbidden: You are not the owner of this post." });
-        }
+    if (!documentToUpdate) {
+      return res.status(404).json({ message: "Document not found" });
+    }
 
-        if (status === "APPROVED") {
-            const updatedDocument = await prisma.documentUpload.update({
-                where: { id: documentId },
-                data: { Review_Status: 'APPROVED' },
-            });
-            await prisma.notification.create({
-                data: {
-                    userId: updatedDocument.userId, // ID ของ Buyer ผู้อัปโหลด
-                    Title: `เอกสารของคุณได้รับการอนุมัติแล้ว`,
-                    Message: `เอกสาร "${updatedDocument.DocumentName}" สำหรับโพสต์ของคุณได้รับการอนุมัติ`,
-                    Status: "UNREAD",
-                    relatedProcess: "DOCUMENT_APPROVAL",
-                    referenceId: updatedDocument.id
-                },
-            });
-            res.json({
-                message: "Document APPROVED successfully",
-                document: updatedDocument,
-            });
-        }else{
-            const buyerId = documentToUpdate.userId;
-            const docName = documentToUpdate.DocumentName;
-            const cloudinaryPublicId = documentToUpdate.CloudinaryPublicId;
-            console.log("ID cloud:",cloudinaryPublicId)
-            // !! ข้อแนะนำสำคัญ: ลบไฟล์ออกจาก Cloudinary (หรือ Storage อื่นๆ) ด้วย !!
-            if (cloudinaryPublicId) {
-                await cloudinary.uploader.destroy(cloudinaryPublicId);
-            }
+    // อนุญาตเฉพาะเจ้าของโพสต์เท่านั้น
+    if (documentToUpdate?.Post?.userId !== sessionUserId) {
+      return res
+        .status(403)
+        .json({ message: "Forbidden: You are not the owner of this post." });
+    }
+
+    if (status === "APPROVED") {
+      const updatedDocument = await prisma.documentUpload.update({
+        where: { id: documentId },
+        data: { Review_Status: "APPROVED" },
+      });
+
+      await prisma.notification.create({
+        data: {
+          userId: updatedDocument.userId, // ผู้ส่งเอกสาร (Buyer)
+          Title: "เอกสารของคุณได้รับการอนุมัติแล้ว",
+          Message: `เอกสาร "${updatedDocument.DocumentName}" สำหรับโพสต์ของคุณได้รับการอนุมัติ`,
+          Status: "UNREAD",
+          relatedProcess: "DOCUMENT_APPROVAL",
+          referenceId: updatedDocument.id,
+        },
+      });
+
+      return res.json({
+        message: "Document APPROVED successfully",
+        document: updatedDocument,
+      });
+    }
+
+    // === REJECTED ===
+    const buyerId = documentToUpdate.userId; // เจ้าของเอกสาร (ผู้ส่ง)
+    const docName = documentToUpdate.DocumentName;
+    const cloudinaryPublicId = documentToUpdate.CloudinaryPublicId;
+
+    if (cloudinaryPublicId) {
+      try {
+        await cloudinary.uploader.destroy(cloudinaryPublicId);
+      } catch (e) {
+        console.warn("Cloudinary destroy failed:", e.message);
+      }
+    }
 
     await prisma.documentUpload.delete({ where: { id: documentId } });
 
-            // สร้าง Notification แจ้งเตือน Buyer
-            await prisma.notification.create({
-                data: {
-                    userId: uploaderUserId, // ใช้ ID ของ Buyer ที่เก็บไว้
-                    Title: `เอกสารของคุณถูกปฏิเสธ`,
-                    Message: `เอกสาร "${docName}" ที่คุณส่งมาถูกปฏิเสธและลบออกจากระบบแล้ว`,
-                    Status: "UNREAD",
-                    relatedProcess: "DOCUMENT_REJECTION",
-                    // ไม่มี referenceId เพราะเอกสารถูกลบไปแล้ว
-                },
-            });
+    await prisma.notification.create({
+      data: {
+        userId: buyerId, // << แก้จาก uploaderUserId → buyerId
+        Title: "เอกสารของคุณถูกปฏิเสธ",
+        Message: `เอกสาร "${docName}" ที่คุณส่งมาถูกปฏิเสธและลบออกจากระบบแล้ว`,
+        Status: "UNREAD",
+        relatedProcess: "DOCUMENT_REJECTION",
+        // ไม่มี referenceId เพราะเอกสารถูกลบไปแล้ว
+      },
+    });
 
     return res.json({
       message: "Document REJECTED and deleted successfully",
@@ -97,10 +122,10 @@ exports.approveDocument = async (req, res) => {
   }
 };
 
-// ===== Get my documents =====
+// ========== ดึงเอกสารของฉัน ==========
 exports.getDocument = async (req, res) => {
   try {
-    const sessionUserId = req.session?.user?.id;
+    const sessionUserId = getSessionUserId(req);
     if (!sessionUserId) {
       return res.status(401).json({ message: "Unauthorized. Please log in." });
     }
@@ -123,7 +148,7 @@ exports.getDocument = async (req, res) => {
   }
 };
 
-// ===== Search helper =====
+// ========== ตัวช่วยค้นหา ==========
 const handlequeryDoc = async (req, res, query) => {
   try {
     const validStatuses = ["PENDING", "APPROVED", "REJECTED"];
@@ -139,9 +164,10 @@ const handlequeryDoc = async (req, res, query) => {
       ],
     };
 
-    if (validStatuses.includes(String(query).toUpperCase())) {
+    const qUpper = String(query).toUpperCase();
+    if (validStatuses.includes(qUpper)) {
       whereClause.OR.push({
-        Review_Status: { equals: String(query).toUpperCase() },
+        Review_Status: { equals: qUpper },
       });
     }
 
@@ -163,22 +189,22 @@ const handlequeryDoc = async (req, res, query) => {
   }
 };
 
-// ===== Search documents =====
+// ========== ค้นหาเอกสาร ==========
 exports.searchDocument = async (req, res) => {
-    try {
-        if (!req.session.user || !req.session.user.userId) {
-            return res.status(401).json({ message: "Unauthorized. Please log in." });
-        }
-        const { q } = req.body
-        console.log("q:", q)
-        if (q) {
-            await handlequeryDoc(req, res, q);
-        } else {
-            return res.json([]);
-        }
-
-    } catch (err) {
-        console.log(err);
-        res.status(500).json({ message: "Server Error" });
+  try {
+    const sessionUserId = getSessionUserId(req);
+    if (!sessionUserId) {
+      return res.status(401).json({ message: "Unauthorized. Please log in." });
     }
-}
+
+    const { q } = req.body || {};
+    if (q) {
+      // ส่งต่อไป helper และ return เพื่อกันส่ง response ซ้ำ
+      return handlequeryDoc(req, res, q);
+    }
+    return res.json([]);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server Error" });
+  }
+};

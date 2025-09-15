@@ -13,28 +13,22 @@ const cloudinary = require("../utils/cloudinary");
 const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => {
-    let folder;
-    let resource_type;
-    let allowed_formats;
-
     if (file.mimetype.startsWith("image")) {
-      folder = "property_images";
-      resource_type = "image";
-      allowed_formats = ["jpg", "jpeg", "png", "gif"];
-    } else if (file.mimetype.startsWith("video")) {
-      folder = "property_videos";
-      resource_type = "video";
-      allowed_formats = ["mp4", "mov", "avi", "mkv"];
-    } else {
-      // ไม่ throw ที่นี่ ให้ multer จัดการผ่าน fileFilter
-      return { error: "Invalid file type" };
+      return {
+        folder: "property_images",
+        resource_type: "image",
+        allowed_formats: ["jpg", "jpeg", "png", "gif"],
+      };
     }
-    return {
-      folder,
-      resource_type,
-      allowed_formats,
-      // transformation: [{ width: 500, height: 500, crop: "limit" }], // เปิดใช้ถ้าต้องการ
-    };
+    if (file.mimetype.startsWith("video")) {
+      return {
+        folder: "property_videos",
+        resource_type: "video",
+        allowed_formats: ["mp4", "mov", "avi", "mkv"],
+      };
+    }
+    // ปล่อยให้ fileFilter เป็นคนบล็อกไฟล์ที่ไม่รองรับ
+    return { folder: "raw_uploads", resource_type: "raw" };
   },
 });
 
@@ -69,10 +63,9 @@ const authCheck = async (req, res, next) => {
     });
     if (!user) return res.status(401).json({ message: "User not found" });
 
-    // ตั้ง req.user ให้ controller อื่นใช้เช็ค owner ได้
     req.user = {
       id: String(user.id),
-      email: user.Email,        // ⚠️ Prisma field ชื่อ Email (ตัวใหญ่)
+      email: user.Email,        // Prisma field 'Email'
       userType: user.userType,
     };
     next();
@@ -95,31 +88,40 @@ const isAuthenticated = (req, res, next) => {
     }
 
     const sessUser = req.session.user;
-    if (!sessUser?.id) {
+    // ✅ โปรเจกต์คุณเก็บ userId ไว้ใน session
+    const uid = sessUser?.userId ?? sessUser?.id ?? null;
+    if (!uid) {
       console.warn("FAILURE: User NOT found in session.");
       return res.status(401).json({ message: "You are not logged in" });
     }
 
     console.log("SUCCESS: User found in session. Proceeding...");
-    // ผูก req.user ให้สม่ำเสมอ
     req.user = {
-      id: String(sessUser.id),
-      email: sessUser.Email ?? sessUser.email ?? null, // รองรับได้ทั้งสองแบบ
+      id: String(uid),
+      email: sessUser.Email ?? sessUser.email ?? null,
       userType: sessUser.userType,
     };
 
-    return next();
+    next();
   } catch (err) {
     console.error("[isAuthenticated] error:", err?.message);
     res.status(401).json({ message: "Unauthorized" });
   }
 };
 
-exports.isSeller = (req, res, next) => {
-    // ตรวจสอบให้แน่ใจว่า req.session.user มีอยู่จริงก่อนจะเช็ค userType
-    if (req.session.user && req.session.user.userType === 'Seller') {
-        return next(); 
-    }
-    res.status(403).json({ message: 'Forbidden: คุณไม่มีสิทธิ์ในการเข้าถึงส่วนนี้' });
+const isSeller = (req, res, next) => {
+  const sessUser = req.session?.user;
+  const userType = sessUser?.userType ?? req.user?.userType;
+  if (userType === "Seller") return next();
+  return res
+    .status(403)
+    .json({ message: "Forbidden: คุณไม่มีสิทธิ์ในการเข้าถึงส่วนนี้" });
 };
 
+// ✅ export ให้ router ใช้ได้แน่นอน
+module.exports = {
+  authCheck,       // JWT bearer
+  isAuthenticated, // session-based
+  isSeller,
+  upload,          // ใช้ upload.single("nationalIdImage")
+};
