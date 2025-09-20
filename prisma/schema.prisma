@@ -157,7 +157,6 @@ model Buyer {
   Special_Requirements  String?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
-  Negotiation           Negotiation[]
   Contract              Contract[]
   Booking               Booking[]
 }
@@ -176,34 +175,17 @@ model Seller {
   publicId           String?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
-  Negotiation        Negotiation[]
   Contract           Contract[]
-  Datetime           Datetime[]
   PropertyPost       PropertyPost?  @relation(fields: [propertyPostId], references: [id])
   propertyPostId     String?
   DateTimeSlot       DateTimeSlot[]
   Booking            Booking[]
 }
 
-model Location {
-  id           String   @id @default(cuid())
-  Province     String
-  District     String
-  Sub_District String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-}
-
 model Category {
   id           String         @id @default(cuid())
   name         String
   PropertyPost PropertyPost[]
-}
-
-model PropertyType {
-  id   String @id @default(cuid())
-  name String
-  // PropertyPost PropertyPost[]
 }
 
 //เอา sellerId และ location ออก
@@ -251,7 +233,6 @@ model PropertyPost {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   Payment        Payment[]
-  Negotiation    Negotiation[]
   Image          Image[]
   Seller         Seller[]
   DocumentUpload DocumentUpload[]
@@ -260,24 +241,20 @@ model PropertyPost {
 
 //เปรียบเหมือนตะกร้าสินค้า
 model Deposit {
-  id             String           @id @default(cuid())
-  Post           PropertyPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  id             String          @id @default(cuid())
+  Post           PropertyPost    @relation(fields: [postId], references: [id], onDelete: Cascade)
   postId         String
-  User           User?            @relation(fields: [userId], references: [id])
+  User           User?           @relation(fields: [userId], references: [id])
   userId         String?
   Deposit_Status Status_Disposit
   Deposit_Amount Float
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  Negotiation    Negotiation?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
   DocumentUpload DocumentUpload[]
 }
 
-model DocumentType {
-  id             String           @id @default(cuid())
-  name           String
-  DocumentUpload DocumentUpload[]
-}
+//ใช้  
 
 model DocumentUpload {
   id                 String        @id @default(cuid())
@@ -290,8 +267,6 @@ model DocumentUpload {
   updatedAt          DateTime      @updatedAt
   User               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId             String
-  DocumentType       DocumentType? @relation(fields: [typeId], references: [id])
-  typeId             String?
   Deposit            Deposit?      @relation(fields: [depositId], references: [id])
   depositId          String?
   Post               PropertyPost? @relation(fields: [postId], references: [id])
@@ -311,29 +286,12 @@ model Payment {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }
-//ลย Negotiation
-model Negotiation {
-  id                String            @id @default(cuid())
-  NegotiationDate   DateTime
-  NegotiationStatus NegotiationStatus
-  Buyer             Buyer             @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-  buyerId           String
-  Seller            Seller            @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  sellerId          String
-  PropertyPost      PropertyPost      @relation(fields: [postId], references: [id])
-  postId            String
-  Deposit           Deposit?          @relation(fields: [depositId], references: [id])
-  depositId         String            @unique
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  Contract          Contract[]
-}
-//Contract อยู่ใน Documentupload 
+
+//Contract สัญญาซื้อขาย url
 model Contract {
   id                String         @id @default(cuid())
   buyerId           String
   sellerId          String
-  negotiationId     String
   BuyerContractDoc  String
   BuyerUploadDate   DateTime
   SellerContractDoc String
@@ -341,7 +299,6 @@ model Contract {
   contractStatus    ContractStatus
   buyer             Buyer          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
   seller            Seller         @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  negotiation       Negotiation    @relation(fields: [negotiationId], references: [id], onDelete: Cascade)
   User              User?          @relation(fields: [userId], references: [id])
   userId            String?
 }
@@ -374,18 +331,6 @@ model Image {
   propertyPostId String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
-}
-
-model Datetime {
-  id        String   @id @default(cuid())
-  Date      String
-  Month     String
-  Year      String
-  Time      String
-  Seller    Seller   @relation(fields: [sellerId], references: [id])
-  sellerId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
 
 model PasswordResetToken {
@@ -422,16 +367,16 @@ model DateTimeSlot {
 }
 
 model Booking {
-  id               String       @id @default(cuid())
-  Buyer            Buyer        @relation(fields: [buyerId], references: [id])
-  buyerId          String
-  Seller           Seller       @relation(fields: [sellerId], references: [id])
-  sellerId         String
-  dateTimeSlot     DateTimeSlot @relation(fields: [dateTimeSlotId], references: [id])
-  dateTimeSlotId   String       @unique
-  isReminderSent   Boolean      @default(false) // เปลี่ยนชื่อจาก isNotificationSent เพื่อความชัดเจน (แจ้งเตือนล่วงหน้า)
-  isDayOfAlertSent Boolean      @default(false)
-  isAtTimeAlertSent   Boolean   @default(false)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id                String       @id @default(cuid())
+  Buyer             Buyer        @relation(fields: [buyerId], references: [id])
+  buyerId           String
+  Seller            Seller       @relation(fields: [sellerId], references: [id])
+  sellerId          String
+  dateTimeSlot      DateTimeSlot @relation(fields: [dateTimeSlotId], references: [id])
+  dateTimeSlotId    String       @unique
+  isReminderSent    Boolean      @default(false) // เปลี่ยนชื่อจาก isNotificationSent เพื่อความชัดเจน (แจ้งเตือนล่วงหน้า)
+  isDayOfAlertSent  Boolean      @default(false)
+  isAtTimeAlertSent Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 }

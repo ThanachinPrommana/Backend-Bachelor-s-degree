@@ -1,86 +1,205 @@
 const prisma = require("../config/prisma")
 
-exports.createDepositPayment = async (req, res) => {
+exports.createStripePaymentIntent = async (req, res) => {
+
     try {
-        // 1. ตรวจสอบการเข้าสู่ระบบและดึงข้อมูลผู้ใช้ (ผู้ซื้อ)
-        const user = req.session.user;
-        if (!user || !user.userId) {
-            return res.status(401).json({ message: "Unauthorized: โปรดเข้าสู่ระบบ" });
-        }
+
+        const user = req.session.user; // หรือ req.user จาก authMiddleware
+
         const buyerId = user.userId;
 
-        // 2. รับข้อมูลจาก request body
-        const { postId, amount, paymentSlipUrl } = req.body;
 
-        // ตรวจสอบข้อมูลเบื้องต้น
-        if (!postId || !amount || !paymentSlipUrl) {
-            return res.status(400).json({ message: "Bad Request: ข้อมูลไม่ครบถ้วน" });
+
+        const { postId } = req.body;
+
+        if (!postId) {
+
+            return res.status(400).json({ message: "Bad Request: ไม่พบ postId" });
+
         }
 
-        const result = await prisma.$transaction(async (tx) => {
-            // 3. ค้นหา Deposit ของโพสต์นี้ และข้อมูลเจ้าของโพสต์
-            const deposit = await tx.deposit.findFirst({
-                where: { postId: postId },
-                include: {
-                    Post: {
-                        select: { userId: true } // userId ของผู้ขาย (Seller)
-                    }
-                }
-            });
 
-            if (!deposit) {
-                throw new Error("Not Found: ไม่พบข้อมูลมัดจำสำหรับประกาศนี้");
-            }
 
-            // 4. ตรวจสอบเงื่อนไขต่างๆ ก่อนทำรายการ
-            if (deposit.Post.userId === buyerId) {
-                throw new Error("Forbidden: คุณไม่สามารถมัดจำประกาศของตัวเองได้");
-            }
-            if (deposit.Deposit_Status !== 'AVAILABLE') {
-                throw new Error("Conflict: ประกาศนี้ถูกมัดจำไปแล้วหรือไม่ได้อยู่ในสถานะว่าง");
-            }
-            if (parseFloat(amount) !== deposit.Deposit_Amount) {
-                throw new Error("Bad Request: จำนวนเงินที่ชำระไม่ตรงกับยอดมัดจำที่กำหนด");
-            }
+        const deposit = await prisma.deposit.findFirst({
 
-            // 5. สร้างบันทึกการชำระเงิน (Payment)
-            const newPayment = await tx.payment.create({
-                data: {
-                    userId: buyerId,
-                    postId: postId,
-                    PaymentType: 'DEPOSIT', // ระบุประเภทการจ่ายเงิน
-                    Payment_Amount: parseFloat(amount),
-                    Payment_Slip: paymentSlipUrl,
-                    Status: 'PENDING_VERIFICATION' // สถานะของ "ใบเสร็จ" นี้
-                }
-            });
+            where: { postId: postId },
 
-            // 6. อัปเดตสถานะของ Deposit หลัก
-            const updatedDeposit = await tx.deposit.update({
-                where: { id: deposit.id },
-                data: {
-                    userId: buyerId, // ผูกผู้ซื้อเข้ากับ Deposit
-                    Deposit_Status: 'PENDING_REVIEW' // เปลี่ยนสถานะเป็น "รอการตรวจสอบ"
-                }
-            });
+            include: { Post: { select: { userId: true } } }
 
-            return { newPayment, updatedDeposit };
         });
 
-        res.status(201).json({
-            message: "Deposit payment submitted successfully. Awaiting verification.",
-            data: result
+
+
+        if (!deposit) {
+
+            return res.status(404).json({ message: "Not Found: ไม่พบข้อมูลมัดจำสำหรับประกาศนี้" });
+
+        }
+
+        if (deposit.Post.userId === buyerId) {
+
+            return res.status(403).json({ message: "Forbidden: คุณไม่สามารถมัดจำประกาศของตัวเองได้" });
+
+        }
+
+        if (deposit.Deposit_Status !== 'AVAILABLE') {
+
+            return res.status(409).json({ message: "Conflict: ประกาศนี้ไม่ว่างสำหรับการมัดจำ" });
+
+        }
+
+
+
+        const amountInSatang = Math.round(deposit.Deposit_Amount * 100);
+
+
+
+        const paymentIntent = await stripe.paymentIntents.create({
+
+            amount: amountInSatang,
+
+            currency: 'thb',
+
+            payment_method_types: ['card', 'promptpay'],
+
+            metadata: {
+
+                depositId: deposit.id,
+
+                postId: deposit.postId,
+
+                buyerId: buyerId
+
+            }
+
         });
+
+
+
+        res.status(200).json({
+
+            clientSecret: paymentIntent.client_secret,
+
+        });
+
+
 
     } catch (error) {
-        console.error("Error creating deposit payment:", error.message);
 
-        // จัดการ Error Code ตามข้อความที่โยนมาจาก Transaction
-        if (error.message.includes("Forbidden")) return res.status(403).json({ message: error.message });
-        if (error.message.includes("Not Found")) return res.status(404).json({ message: error.message });
-        if (error.message.includes("Conflict")) return res.status(409).json({ message: error.message });
-        if (error.message.includes("Bad Request")) return res.status(400).json({ message: error.message });
-        
+        console.error("Error creating Stripe Payment Intent:", error.message);
+
         res.status(500).json({ message: "Server Error" });
+
     }
+
+};
+
+
+
+/**
+
+* 2. รับและจัดการ Webhook จาก Stripe
+
+* ถูกเรียกใช้โดย Server ของ Stripe เท่านั้น
+
+*/
+
+exports.handleStripeWebhook = async (req, res) => {
+
+    const sig = req.headers['stripe-signature'];
+
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    let event;
+
+
+
+    try {
+
+        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+
+    } catch (err) {
+
+        console.log(`❌ Webhook signature verification failed.`, err.message);
+
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+
+    }
+
+
+
+    if (event.type === 'payment_intent.succeeded') {
+
+        const paymentIntent = event.data.object;
+
+        console.log('✅ PaymentIntent was successful!', paymentIntent.id);
+
+
+
+        const { depositId, postId, buyerId } = paymentIntent.metadata;
+
+
+
+        try {
+
+            await prisma.$transaction(async (tx) => {
+
+                const updatedDeposit = await tx.deposit.update({
+
+                    where: { id: depositId },
+
+                    data: {
+
+                        Deposit_Status: 'CONFIRMED',
+
+                        userId: buyerId // ⭐️ อัปเดต userId ที่นี่!
+
+                    }
+
+                });
+
+
+
+                await tx.payment.create({
+
+                    data: {
+
+                        userId: buyerId,
+
+                        postId: postId,
+
+                        PaymentType: 'STRIPE',
+
+                        Payment_Amount: paymentIntent.amount / 100,
+
+                        Payment_Slip: paymentIntent.id,
+
+                        Status: 'COMPLETED',
+
+                    },
+
+                });
+
+            });
+
+            console.log('✅ Database updated for depositId:', depositId);
+
+        } catch (err) {
+
+            console.error('❌ Error updating database from webhook:', err);
+
+            return res.status(500).json({ error: 'Database update failed.' });
+
+        }
+
+    } else {
+
+        console.log(`Unhandled event type ${event.type}`);
+
+    }
+
+
+
+    res.status(200).json({ received: true });
+
 };

@@ -9,12 +9,13 @@ const {
   filesOf,
   connectIf,
 } = require("../utils/parse");
+const { response } = require("express");
 
 // อนุญาตตาม enum ใน schema.prisma
 const ALLOWED_LANDMARKS = ["BTS_MRT", "School", "Hospital", "Mall_Market", "Park"];
 const ALLOWED_AMENITIES = ["Swimming_Pool", "Fitness_Center", "Co_working_Space", "Pet_Friendly"];
 
-// =============== CREATE ===============
+// =============== CREATE ==============แก้ไข โดยให้ส้ราง deposit ไปด้วยเลย
 exports.createpost = async (req, res) => {
   try {
     if (!req.session.user) {
@@ -60,72 +61,88 @@ exports.createpost = async (req, res) => {
       categoryId,
       Interest,
       floor,
+
     } = req.body;
 
+    if (!Deposit_Amount || Deposit_Amount <= 0) {
+      return res.status(400).json({ message: "This post requires a valid deposit amount." });
+    }
     // รองรับทั้ง multer.fields() และ multer.array()
     const imageFiles = filesOf(req.files, "images");
     const videoFiles = filesOf(req.files, "videos");
 
-    const newPost = await prisma.propertyPost.create({
-      data: {
-        Property_Name,
-        Province,
-        District,
-        Subdistrict,
-        Address,
-        Propertytype,
-        Description,
-        Usable_Area: toFloatOrNull(Usable_Area),
-        Land_Size: toFloatOrNull(Land_Size),
-        Bedrooms: toIntOrNull(Bedrooms),
-        Bathroom: toIntOrNull(Bathroom),
-        Total_Rooms: toIntOrNull(Total_Rooms),
-        Year_Built, // string ตาม schema
+    const newPostWithDeposit = await prisma.$transaction(async (tx) => {
+      const newPost = await prisma.propertyPost.create({
+        data: {
+          Property_Name,
+          Province,
+          District,
+          Subdistrict,
+          Address,
+          Propertytype,
+          Description,
+          Usable_Area: toFloatOrNull(Usable_Area),
+          Land_Size: toFloatOrNull(Land_Size),
+          Bedrooms: toIntOrNull(Bedrooms),
+          Bathroom: toIntOrNull(Bathroom),
+          Total_Rooms: toIntOrNull(Total_Rooms),
+          Year_Built, // string ตาม schema
 
-        Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
-        Additional_Amenities: toEnumArray(Additional_Amenities, ALLOWED_AMENITIES),
+          Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
+          Additional_Amenities: toEnumArray(Additional_Amenities, ALLOWED_AMENITIES),
 
-        Deposit_Amount: toFloatOrNull(Deposit_Amount),
-        Contract_Seller,
-        LinkMap,
-        Price: toFloatOrNull(Price),
-        Parking_Space: toIntOrNull(Parking_Space),
-        Sell_Rent,
-        Link_line,
-        Link_facbook,
-        Name,
-        Phone,
-        Latitude: toFloatOrNull(Latitude),
-        Longitude: toFloatOrNull(Longitude),
-        Other_related_expenses,
-        Interest: toFloatOrNull(Interest),
-        floor: toIntOrNull(floor),
+          Deposit_Amount: toFloatOrNull(Deposit_Amount),
+          Contract_Seller,
+          LinkMap,
+          Price: toFloatOrNull(Price),
+          Parking_Space: toIntOrNull(Parking_Space),
+          Sell_Rent,
+          Link_line,
+          Link_facbook,
+          Name,
+          Phone,
+          Latitude: toFloatOrNull(Latitude),
+          Longitude: toFloatOrNull(Longitude),
+          Other_related_expenses,
+          Interest: toFloatOrNull(Interest),
+          floor: toIntOrNull(floor),
 
-        ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
-        user: { connect: { id: userId } },
-        Seller: { connect: { id: sellerId } },
+          ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
+          user: { connect: { id: userId } },
+          Seller: { connect: { id: sellerId } },
 
-        Image: {
-          create: imageFiles.map((file) => ({
-            asset_id: file.asset_id,
-            public_id: file.public_id || file.filename,
-            url: file.path || file.url,
-            secure_url: file.secure_url || file.path || file.url,
-          })),
+          Image: {
+            create: imageFiles.map((file) => ({
+              asset_id: file.asset_id,
+              public_id: file.public_id || file.filename,
+              url: file.path || file.url,
+              secure_url: file.secure_url || file.path || file.url,
+            })),
+          },
+          Video: {
+            create: videoFiles.map((file) => ({
+              asset_id: file.asset_id,
+              public_id: file.public_id || file.filename,
+              url: file.path || file.url,
+              secure_url: file.secure_url || file.path || file.url,
+            })),
+          },
         },
-        Video: {
-          create: videoFiles.map((file) => ({
-            asset_id: file.asset_id,
-            public_id: file.public_id || file.filename,
-            url: file.path || file.url,
-            secure_url: file.secure_url || file.path || file.url,
-          })),
-        },
-      },
-      include: { Image: true, Video: true },
-    });
+        include: { Image: true, Video: true },
+      });
+      await tx.deposit.create({
+        data:{
+          postId:newPost.id,
+          Deposit_Amount:toFloatOrNull(Deposit_Amount),
+          Deposit_Status:"PENDING"
+        }
+      })
 
-    res.status(201).json(newPost);
+      return newPost  
+    })
+
+
+    res.status(201).json(newPostWithDeposit);
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Server Error" });

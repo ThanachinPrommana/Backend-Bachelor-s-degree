@@ -882,7 +882,7 @@ exports.searchFiltersSeller = async (req, res) => {
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' });
   }
 };
-//complete
+//complete ใช้แบบ stripe ส่วนนี้ยังคงไม่ต้องใช้
 exports.createdeposite = async (req, res) => {
   try {
     const user = req.session.user;
@@ -1012,7 +1012,7 @@ exports.createdeposite = async (req, res) => {
     res.status(500).json({ message: "Server Error" });
   }
 }
-//complete
+//complete ใช้แบบ stripe ส่วนนี้ยังคงไม่ต้องใช้
 exports.updateDepositStatus = async (req, res) => {
   try {
     const user = req.session.user;
