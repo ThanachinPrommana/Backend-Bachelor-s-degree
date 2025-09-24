@@ -7,9 +7,15 @@ const { readdirSync } = require("fs");
 require("dotenv").config();
 const session = require("express-session");
 
-const { startNotificationSchedulers } = require("./Scheduler/notificationScheduler")
+const { startNotificationSchedulers } = require("./Scheduler/notificationScheduler");
+const { handleStripeWebhook } = require("./controllers/payment");
 app.use(morgan("dev"));
 
+app.post(
+    "/api/stripe/webhook",
+    express.raw({ type: 'application/json' }),
+    handleStripeWebhook
+)
 
 const corsOptions = {
     origin: 'http://localhost:5173',
@@ -20,6 +26,7 @@ app.use(cors(corsOptions));
 
 app.use(express.json());
 
+app.use(express.urlencoded({ extended: true }))
 
 app.use(session({
     secret: process.env.SECRETKEY || "SECRETKEY",

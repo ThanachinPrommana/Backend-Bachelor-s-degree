@@ -41,6 +41,7 @@ enum Status_Review {
 enum PaymentType {
   CREDIT_CARD
   QR
+  STRIPE 
 }
 
 enum Status_payment {
