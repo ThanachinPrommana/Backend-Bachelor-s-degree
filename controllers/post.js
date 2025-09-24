@@ -24,7 +24,7 @@ exports.createpost = async (req, res) => {
 
     // ดึง userId, userType, และ sellerId จาก session
     const { userId, userType, sellerId } = req.session.user;
-
+    console.log("Id Seller:", sellerId)
     // 2. ตรวจสอบสิทธิ์: เฉพาะ Seller เท่านั้นที่สามารถสร้างโพสต์ได้
     if (userType !== 'Seller' || !sellerId) {
       return res.status(403).json({ message: "Forbidden: Only sellers can create posts." });
@@ -131,15 +131,18 @@ exports.createpost = async (req, res) => {
         include: { Image: true, Video: true },
       });
       await tx.deposit.create({
-        data:{
-          postId:newPost.id,
-          Deposit_Amount:toFloatOrNull(Deposit_Amount),
-          Deposit_Status:"PENDING"
+        data: {
+          postId: newPost.id,
+          Deposit_Amount: toFloatOrNull(Deposit_Amount),
+          Deposit_Status: "PENDING"
         }
       })
 
-      return newPost  
-    })
+      return newPost
+    },
+      { timeout: 10000 }
+
+    )
 
 
     res.status(201).json(newPostWithDeposit);
