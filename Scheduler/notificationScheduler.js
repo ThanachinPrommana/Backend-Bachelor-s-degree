@@ -2,14 +2,12 @@
 const cron = require("node-cron");
 const prisma = require("../config/prisma");
 
-// --- ฟังก์ชันที่ 1: แจ้งเตือน "พรุ่งนี้" ---
-const checkAndSendReminders = async () => {
-  console.log("⏰ [Scheduler] Running job: Checking for TOMORROW appointments...");
-
+// --- ฟังก์ชันที่ 1: ตรวจสอบและส่งการแจ้งเตือนล่วงหน้า ---
+export const checkAndSendReminders = async () => {
+  console.log('⏰ [Scheduler] Running job: Checking for TOMORROW appointments...');
   const now = new Date();
   const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
   const endOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59);
-
   try {
     const upcomingBookings = await prisma.booking.findMany({
       where: {
@@ -20,7 +18,6 @@ const checkAndSendReminders = async () => {
       },
       include: { Buyer: { include: { user: true } }, Seller: { include: { user: true } }, dateTimeSlot: true },
     });
-
     if (upcomingBookings.length === 0) {
       console.log("✅ [Scheduler] No upcoming reminders to send for tomorrow.");
       return;
@@ -44,7 +41,6 @@ const checkAndSendReminders = async () => {
         relatedProcess: "APPOINTMENT_REMINDER",
       },
     ]);
-
     await prisma.$transaction([
       prisma.notification.createMany({ data: notificationsToCreate }),
       prisma.booking.updateMany({
@@ -59,14 +55,12 @@ const checkAndSendReminders = async () => {
   }
 };
 
-// --- ฟังก์ชันที่ 2: แจ้งเตือน "เช้าวันนัด" ---
-const checkAndSendDayOfAlerts = async () => {
-  console.log("🚨 [Scheduler] Running job: Checking for TODAY appointments...");
-
+// --- ฟังก์ชันที่ 2: ตรวจสอบและส่งการแจ้งเตือนใน "วันนัดหมาย" ---
+export const checkAndSendDayOfAlerts = async () => {
+  console.log('[Scheduler] Running job: Checking for TODAY appointments...');
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-
   try {
     const todaysBookings = await prisma.booking.findMany({
       where: {
@@ -77,7 +71,6 @@ const checkAndSendDayOfAlerts = async () => {
       },
       include: { Buyer: { include: { user: true } }, Seller: { include: { user: true } }, dateTimeSlot: true },
     });
-
     if (todaysBookings.length === 0) {
       console.log("✅ [Scheduler] No appointments today to send alerts for.");
       return;
@@ -101,7 +94,6 @@ const checkAndSendDayOfAlerts = async () => {
         relatedProcess: "APPOINTMENT_ALERT",
       },
     ]);
-
     await prisma.$transaction([
       prisma.notification.createMany({ data: notificationsToCreate }),
       prisma.booking.updateMany({
@@ -120,7 +112,6 @@ const checkAndSendDayOfAlerts = async () => {
 const checkAndSendAtTimeAlerts = async () => {
   const now = new Date();
   const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
-
   try {
     const dueBookings = await prisma.booking.findMany({
       where: {
@@ -131,11 +122,9 @@ const checkAndSendAtTimeAlerts = async () => {
       },
       include: { Buyer: { include: { user: true } }, Seller: { include: { user: true } }, dateTimeSlot: true },
     });
-
     if (dueBookings.length === 0) {
       return;
     }
-
     console.log(`🔥 [Scheduler] Found ${dueBookings.length} appointments due right now!`);
 
     const notificationsToCreate = dueBookings.flatMap((booking) => [
@@ -156,7 +145,6 @@ const checkAndSendAtTimeAlerts = async () => {
         relatedProcess: "APPOINTMENT_NOW",
       },
     ]);
-
     await prisma.$transaction([
       prisma.notification.createMany({ data: notificationsToCreate }),
       prisma.booking.updateMany({
@@ -168,6 +156,28 @@ const checkAndSendAtTimeAlerts = async () => {
     console.log(`🚀 [Scheduler] Successfully sent ${notificationsToCreate.length} "at-time" alerts.`);
   } catch (error) {
     console.error('[Scheduler] Error processing "at-time" alerts:', error);
+  }
+};
+
+// --- 🔥 ฟังก์ชันที่ 4 (ใหม่): ลบ Slot ที่เลยเวลาและยังไม่ถูกจอง ---
+export const cleanupExpiredSlots = async () => {
+  console.log('🧹 [Scheduler] Running job: Cleaning up expired, unbooked time slots...');
+  const now = new Date();
+  try {
+    const result = await prisma.dateTimeSlot.deleteMany({
+      where: {
+        endTime: {
+          lt: now // lt = less than (น้อยกว่าเวลาปัจจุบัน)
+        },
+        isBooked: false // และยังไม่ถูกจอง
+      }
+    });
+
+    if (result.count > 0) {
+      console.log(`✅ [Scheduler] Successfully cleaned up ${result.count} expired slots.`);
+    }
+  } catch (error) {
+    console.error('[Scheduler] Error during expired slot cleanup:', error);
   }
 };
 
@@ -188,3 +198,4 @@ module.exports = {
   checkAndSendAtTimeAlerts,
   startNotificationSchedulers,
 };
+

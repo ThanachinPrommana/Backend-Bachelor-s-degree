@@ -35,12 +35,18 @@ const {
 
   createBooking,
 
-  createDateTimeSlot
+  createDateTimeSlot,
+  removeTimeSlot,
+  removeBooking,
 } = require("../controllers/user");
+const {
+  createStripePaymentIntent
+} = require("../controllers/payment")
 
 const upload = require("../Middlewares/upload");
 const uploadDocument = require("../Middlewares/document");
 const { isAuthenticated, isSeller } = require("../Middlewares/authCheck");
+const { handleStripeWebhook } = require("../controllers/payment");
 
 // -------------------------------------------------------------
 // Admin / Management (ควรมี adminOnly เพิ่มเติม ถ้ามี middleware)
@@ -107,9 +113,17 @@ router.patch("/update/status/deposit/:depositId", isAuthenticated, updateDeposit
 
 router.post("/document", uploadDocument.single("document"), useruploadDocument);
 
-//CreateDateSlot
+//DateSlot
 router.post("/seller/slot", isAuthenticated, isSeller, createDateTimeSlot);
-
-//CreateBooking
+router.delete("/seller/remove/:timeSlotId", isAuthenticated, removeTimeSlot)
+//Booking
 router.post("/user/booking", isAuthenticated, createBooking);
+router.delete("/user/remove/:bookingId", isAuthenticated, removeBooking)
+// Payment
+router.post("/create/payment", isAuthenticated, createStripePaymentIntent)
+// router.post(
+//   "/stripe/webhook",
+//   express.raw({ type: "application/json" }),
+//   handleStripeWebhook
+// );
 module.exports = router;

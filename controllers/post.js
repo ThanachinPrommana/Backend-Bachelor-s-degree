@@ -1,4 +1,5 @@
 // controllers/post.js
+const Video = require("twilio/lib/rest/Video");
 const prisma = require("../config/prisma");
 const cloudinary = require("../utils/cloudinary");
 const {
@@ -8,14 +9,13 @@ const {
   filesOf,
   connectIf,
 } = require("../utils/parse");
+const { response } = require("express");
 
 // อนุญาตตาม enum ใน schema.prisma
 const ALLOWED_LANDMARKS = ["BTS_MRT", "School", "Hospital", "Mall_Market", "Park"];
 const ALLOWED_AMENITIES = ["Swimming_Pool", "Fitness_Center", "Co_working_Space", "Pet_Friendly"];
 
-// =============== CREATE ===============
-// controllers/post.js
-// controllers/post.js
+// =============== CREATE ==============แก้ไข โดยให้ส้ราง deposit ไปด้วยเลย
 exports.createpost = async (req, res) => {
   try {
     if (!req.session.user) {
@@ -72,6 +72,7 @@ exports.createpost = async (req, res) => {
       categoryId,
       Interest,
       floor,
+
     } = req.body;
 
     // เช็คมัดจำ
@@ -301,6 +302,12 @@ exports.getPost = async (req, res) => {
         Longitude: true,
         Other_related_expenses: true,
         Status_post: true,
+        Video: {
+          select: {
+            url: true,
+            secure_url: true
+          }
+        }
       },
     });
 

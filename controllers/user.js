@@ -882,7 +882,7 @@ exports.searchFiltersSeller = async (req, res) => {
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' });
   }
 };
-//complete
+//complete ใช้แบบ stripe ส่วนนี้ยังคงไม่ต้องใช้
 exports.createdeposite = async (req, res) => {
   try {
     const user = req.session.user;
@@ -1012,7 +1012,7 @@ exports.createdeposite = async (req, res) => {
     res.status(500).json({ message: "Server Error" });
   }
 }
-//complete
+//complete ใช้แบบ stripe ส่วนนี้ยังคงไม่ต้องใช้
 exports.updateDepositStatus = async (req, res) => {
   try {
     const user = req.session.user;
@@ -1514,7 +1514,7 @@ exports.removeBooking = async (req, res) => {
     const deletedBooking = await prisma.$transaction(async (tx) => {
       await tx.dateTimeSlot.update({
         where: {
-          id: booking.dateTimeSlot
+          id: booking.dateTimeSlot.id
         },
         data: {
           isBooked: false
@@ -1542,7 +1542,8 @@ exports.removeBooking = async (req, res) => {
           Title: "มีการยกเลิกการนัดหมาย",
           Message: notificationMessage,
           relatedProcess: "BOOKING_CANCELLED",
-          referenceId: booking.dateTimeSlot.id
+          referenceId: booking.dateTimeSlot.id,
+          Status:"UNREAD"
         }
       })
       return result

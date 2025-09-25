@@ -247,15 +247,43 @@ const getProfile = async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id },
       include: {
-        Seller: true,
-        Buyer: true,
+        
+        Seller: {
+          select:{
+            id:true,
+            National_ID:true,
+            Company_Name:true,
+            RealEstate_License:true,
+            Status:true,
+            nationalIdImage:true,
+            DateTimeSlot:true,
+            Booking:true
+          }
+        },
+        Buyer: {
+          select:{
+            DateofBirth:true,
+            Occupation:true,
+            Monthly_Income:true,
+            Family_Size:true,
+            Preferred_District:true,
+            Parking_Needs:true,
+            Nearby_Facilities:true,
+            Lifestyle_Preferences:true,
+            Booking:true
+          }
+        },
         Deposit: {
           select: {
             id: true,
             Deposit_Status: true,
             Deposit_Amount: true,
-            Post: { select: { Property_Name: true } },
-          },
+            Post: {   
+              select: {
+                Property_Name: true
+              }
+            }
+          }
         },
         Notification: true,
         PropertyPost: {
