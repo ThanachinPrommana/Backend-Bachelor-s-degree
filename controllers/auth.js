@@ -241,7 +241,7 @@ const resetPassword = async (req, res) => {
 // ===== get profile =====
 const getProfile = async (req, res) => {
   try {
-    const id = getSessionUserId(req);
+    const id = req.session?.user?.userId ?? req.session?.user?.id ?? null;
     if (!id) return res.status(401).json({ message: "Unauthorized" });
 
     const user = await prisma.user.findUnique({
@@ -290,6 +290,22 @@ const getProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.Password) delete user.Password;
 
+    // ✅ Sync session ให้ตรงกับ DB เสมอ (สำคัญสำหรับการสร้างโพสต์ให้ผ่าน 403)
+    req.session.user = {
+      userId: user.id,
+      Email: user.Email,
+      userType: user.userType,
+      Phone: user.Phone,
+      First_name: user.First_name,
+      Last_name: user.Last_name,
+      image: user.image,
+      ...(user.Buyer ? { buyerId: user.Buyer.id, Buyer: user.Buyer } : {}),
+      ...(user.Seller ? { sellerId: user.Seller.id, Seller: user.Seller } : {}),
+    };
+    req.session.save((err) => {
+      if (err) console.error("Session re-save error in getProfile:", err);
+    });
+
     console.log("Successfully fetched profile for user:", user.id);
     return res.status(200).json({ user });
   } catch (error) {
@@ -321,29 +337,22 @@ const logout = (req, res) => {
 };
 
 // ===== register seller =====
+// ...เดิมข้างบนคงไว้
 const registerSeller = async (req, res) => {
   try {
     if (!req.file) {
-      return res
-        .status(400)
-        .json({ message: "กรุณาแนบรูปภาพบัตรประชาชน" });
+      return res.status(400).json({ message: "กรุณาแนบรูปภาพบัตรประชาชน" });
     }
 
-    const userId = getSessionUserId(req); // <<< ใช้ helper ให้ชัวร์
+    const userId = getSessionUserId(req);
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized. Please log in." });
     }
 
     const { National_ID, Company_Name, RealEstate_License } = req.body;
     if (!National_ID) {
-      return res
-        .status(400)
-        .json({ message: "กรุณากรอกข้อมูลบัตรประชาชน" });
+      return res.status(400).json({ message: "กรุณากรอกข้อมูลบัตรประชาชน" });
     }
-
-    // จาก multer + cloudinary
-    const nationalIdImageUrl = req.file.path;
-    const nationalIdPublicId = req.file.filename;
 
     const result = await prisma.$transaction(async (tx) => {
       const existingSeller = await tx.seller.findFirst({
@@ -366,8 +375,8 @@ const registerSeller = async (req, res) => {
           Company_Name,
           RealEstate_License,
           Status: "PENDING",
-          nationalIdImage: nationalIdImageUrl,
-          publicId: nationalIdPublicId,
+          nationalIdImage: req.file.path,
+          publicId: req.file.filename,
         },
       });
 
@@ -377,6 +386,20 @@ const registerSeller = async (req, res) => {
       });
 
       return newSeller;
+    });
+
+    // ✅ อัปเดต session ให้กลายเป็น Seller ทันที
+    req.session.user = {
+      ...(req.session.user || {}),
+      userId,
+      userType: "Seller",
+      sellerId: result.id,
+    };
+    req.session.save((err) => {
+      if (err) {
+        console.error("Session save error after registerSeller:", err);
+        // ไม่ fail งานหลัก แค่ log
+      }
     });
 
     return res.status(201).json({
@@ -389,6 +412,7 @@ const registerSeller = async (req, res) => {
     return res.status(400).json({ message: err.message || "Server error" });
   }
 };
+
 
 // ✅ รวม export ให้ router ดึงได้แน่นอน
 module.exports = {
