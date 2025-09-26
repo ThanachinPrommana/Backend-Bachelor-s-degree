@@ -325,30 +325,30 @@ exports.getProfile = async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id }, // <-- โค้ดส่วนนี้ยังใช้ตัวแปร id ได้เหมือนเดิม
       include: {
-        
+
         Seller: {
-          select:{
-            id:true,
-            National_ID:true,
-            Company_Name:true,
-            RealEstate_License:true,
-            Status:true,
-            nationalIdImage:true,
-            DateTimeSlot:true,
-            Booking:true
+          select: {
+            id: true,
+            National_ID: true,
+            Company_Name: true,
+            RealEstate_License: true,
+            Status: true,
+            nationalIdImage: true,
+            DateTimeSlot: true,
+            Booking: true
           }
         },
         Buyer: {
-          select:{
-            DateofBirth:true,
-            Occupation:true,
-            Monthly_Income:true,
-            Family_Size:true,
-            Preferred_District:true,
-            Parking_Needs:true,
-            Nearby_Facilities:true,
-            Lifestyle_Preferences:true,
-            Booking:true
+          select: {
+            DateofBirth: true,
+            Occupation: true,
+            Monthly_Income: true,
+            Family_Size: true,
+            Preferred_District: true,
+            Parking_Needs: true,
+            Nearby_Facilities: true,
+            Lifestyle_Preferences: true,
+            Booking: true
           }
         },
         Deposit: {
@@ -356,7 +356,7 @@ exports.getProfile = async (req, res) => {
             id: true,
             Deposit_Status: true,
             Deposit_Amount: true,
-            Post: {   
+            Post: {
               select: {
                 Property_Name: true
               }
@@ -376,7 +376,8 @@ exports.getProfile = async (req, res) => {
             Deposit_Amount: true,
             Sell_Rent: true,
             Image: true,
-            Deposit: true
+            Deposit: true,
+            sellerId:true
           }
         },
         DocumentUpload: {
@@ -436,7 +437,8 @@ exports.registerSeller = async (req, res) => {
     return res.status(400).json({ message: "กรุณาแนบรูปภาพบัตรประชาชน" });
   }
 
-  const userId = req.session.user.id;
+  const userId = req.session.user.userId;
+  console.log("User ID from session:", userId);
   if (!userId) {
     return res.status(401).json({ message: "Unauthorized. Please log in." });
   }
@@ -491,6 +493,8 @@ exports.registerSeller = async (req, res) => {
 
       return newSeller;
     });
+    req.session.user.userType = "Seller";
+    req.session.user.sellerId = result.id; 
 
     res.status(201).json({
       message: "Seller registration successful! Your application is pending review.",

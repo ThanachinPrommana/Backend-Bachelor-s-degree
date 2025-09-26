@@ -41,7 +41,7 @@ enum Status_Review {
 enum PaymentType {
   CREDIT_CARD
   QR
-  STRIPE 
+  STRIPE
 }
 
 enum Status_payment {
@@ -115,8 +115,19 @@ enum Lifestyle_Preferences {
 }
 
 enum Status_post {
-  PENDING
-  CONFIRMED
+  PENDING // รอแอดมินอนุมัติ (สถานะเริ่มต้น)
+  CONFIRMED // อนุมัติแล้ว (เทียบเท่ากับสถานะ "AVAILABLE" ที่เราคุยกัน)
+  SOLD // ขายไปแล้ว
+  HIDDEN // ผู้ขายซ่อนไว้ชั่วคราว
+  REJECTED // แอดมินไม่อนุมัติ
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT // รอจ่ายมัดจำ (ขั้นตอนแรกสุด)
+  CONFIRMED // จ่ายมัดจำแล้ว, ยืนยันนัดหมาย (รอจ่ายส่วนที่เหลือ)
+  PENDING_FINAL_VERIFICATION // อัปโหลดสลิปสุดท้ายแล้ว, รอผู้ขายตรวจสอบ
+  COMPLETED // กระบวนการเสร็จสมบูรณ์
+  CANCELLED
 }
 
 model User {
@@ -133,7 +144,6 @@ model User {
   Seller             Seller?
   PropertyPost       PropertyPost[]
   Payment            Payment[]
-  Contract           Contract[]
   Notification       Notification[]
   PasswordResetToken PasswordResetToken[]
   image              String?
@@ -158,7 +168,6 @@ model Buyer {
   Special_Requirements  String?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
-  Contract              Contract[]
   Booking               Booking[]
 }
 
@@ -176,11 +185,9 @@ model Seller {
   publicId           String?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
-  Contract           Contract[]
-  PropertyPost       PropertyPost?  @relation(fields: [propertyPostId], references: [id])
-  propertyPostId     String?
   DateTimeSlot       DateTimeSlot[]
   Booking            Booking[]
+  PropertyPost       PropertyPost[]
 }
 
 model Category {
@@ -228,6 +235,8 @@ model PropertyPost {
   userId         String
   // Propertytype           PropertyType?              @relation(fields: [propertyTypeId], references: [id])
   // propertyTypeId         String?
+  seller         Seller?          @relation(fields: [sellerId], references: [id])
+  sellerId       String?
   Category       Category?        @relation(fields: [categoryId], references: [id])
   categoryId     String?
   Deposit        Deposit[]
@@ -235,9 +244,9 @@ model PropertyPost {
   updatedAt      DateTime         @updatedAt
   Payment        Payment[]
   Image          Image[]
-  Seller         Seller[]
   DocumentUpload DocumentUpload[]
   Video          Video[]
+  DateTimeSlot   DateTimeSlot[]
 }
 
 //เปรียบเหมือนตะกร้าสินค้า
@@ -289,20 +298,23 @@ model Payment {
 }
 
 //Contract สัญญาซื้อขาย url
-model Contract {
-  id                String         @id @default(cuid())
-  buyerId           String
-  sellerId          String
-  BuyerContractDoc  String
-  BuyerUploadDate   DateTime
-  SellerContractDoc String
-  SellerUploadDate  DateTime
-  contractStatus    ContractStatus
-  buyer             Buyer          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-  seller            Seller         @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  User              User?          @relation(fields: [userId], references: [id])
-  userId            String?
-}
+
+// model Contract {
+//   id                String         @id @default(cuid())
+//   buyerId           String
+//   sellerId          String
+//   BuyerContractDoc  String?
+//   BuyerUploadDate   DateTime?
+//   SellerContractDoc String?
+//   SellerUploadDate  DateTime?
+//   contractStatus    ContractStatus
+//   bookingId         String         @unique
+//   booking           Booking        @relation(fields: [bookingId], references: [id])
+//   buyer             Buyer          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+//   seller            Seller         @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+//   userId            String?
+//   User              User?          @relation(fields: [userId], references: [id])
+// }
 
 model Notification {
   id             String             @id @default(cuid())
@@ -356,28 +368,33 @@ model Video {
 }
 
 model DateTimeSlot {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   startTime DateTime
   endTime   DateTime
-  isBooked  Boolean  @default(false)
-  Seller    Seller   @relation(fields: [sellerId], references: [id])
+  isBooked  Boolean       @default(false)
+  Seller    Seller        @relation(fields: [sellerId], references: [id])
   sellerId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  Post      PropertyPost? @relation(fields: [postId], references: [id])
+  postId    String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
   Booking   Booking?
 }
 
 model Booking {
-  id                String       @id @default(cuid())
-  Buyer             Buyer        @relation(fields: [buyerId], references: [id])
-  buyerId           String
-  Seller            Seller       @relation(fields: [sellerId], references: [id])
-  sellerId          String
-  dateTimeSlot      DateTimeSlot @relation(fields: [dateTimeSlotId], references: [id])
-  dateTimeSlotId    String       @unique
-  isReminderSent    Boolean      @default(false) // เปลี่ยนชื่อจาก isNotificationSent เพื่อความชัดเจน (แจ้งเตือนล่วงหน้า)
-  isDayOfAlertSent  Boolean      @default(false)
-  isAtTimeAlertSent Boolean      @default(false)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id                  String        @id @default(cuid())
+  Buyer               Buyer         @relation(fields: [buyerId], references: [id])
+  buyerId             String
+  Seller              Seller        @relation(fields: [sellerId], references: [id])
+  sellerId            String
+  dateTimeSlot        DateTimeSlot  @relation(fields: [dateTimeSlotId], references: [id])
+  dateTimeSlotId      String        @unique
+  isReminderSent      Boolean       @default(false) // เปลี่ยนชื่อจาก isNotificationSent เพื่อความชัดเจน (แจ้งเตือนล่วงหน้า)
+  isDayOfAlertSent    Boolean       @default(false)
+  isAtTimeAlertSent   Boolean       @default(false)
+  finalSlipUrl        String? // URL ของสลิปสุดท้ายจาก Cloudinary
+  finalSlipUploadDate DateTime? // วันที่อัปโหลดสลิปสุดท้าย
+  bookingStatus       BookingStatus @default(CONFIRMED) // สถานะโดยรวมของการจอง
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 }

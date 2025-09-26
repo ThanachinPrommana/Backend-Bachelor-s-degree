@@ -109,8 +109,11 @@ exports.createpost = async (req, res) => {
 
           ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
           user: { connect: { id: userId } },
-          Seller: { connect: { id: sellerId } },
-
+          seller: {
+            connect: {
+              id: sellerId
+            }
+          },
           Image: {
             create: imageFiles.map((file) => ({
               asset_id: file.asset_id,
@@ -344,14 +347,27 @@ exports.removepost = async (req, res) => {
 // =============== UPDATE (รองรับอัปเดตรูป & วิดีโอ) ===============
 exports.updatePost = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params; // ID ของโพสต์ที่ต้องการอัปเดต
+
+    // 🔥 1. ตรวจสอบ Session และดึง sellerId
+    if (!req.session.user || !req.session.user.sellerId) {
+      return res.status(401).json({ message: "Unauthorized or not a seller" });
+    }
+    const { sellerId } = req.session.user;
 
     if (!req.body || typeof req.body !== "object") {
       return res.status(400).json({ message: "Invalid or missing request body" });
     }
 
     const existingPost = await prisma.propertyPost.findUnique({ where: { id } });
-    if (!existingPost) return res.status(404).json({ message: "Post not found" });
+    if (!existingPost) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    // 🔥 2. ตรวจสอบความเป็นเจ้าของ
+    if (existingPost.sellerId !== sellerId) {
+      return res.status(403).json({ message: "Forbidden: You are not the owner of this post" });
+    }
 
     // ฟิลด์ที่อนุญาตให้อัปเดต
     const allowedFields = [
@@ -368,13 +384,16 @@ exports.updatePost = async (req, res) => {
 
     const dataToUpdate = {};
     Object.entries(req.body).forEach(([k, v]) => {
-      if (!allowedFields.includes(k)) return;   // ข้ามฟิลด์ที่ไม่อนุญาต
-      if (v === undefined) return;              // ไม่ส่งมา → ไม่แตะ
+      if (!allowedFields.includes(k)) return;
+      if (v === undefined) return;
 
-      if (v === "" || v === null) {            // เคลียร์ค่า
+      if (v === "" || v === null) {
         if (k === "Nearby_Landmarks" || k === "Additional_Amenities") {
           dataToUpdate[k] = { set: [] };
-        } else {
+        } else if (k === "categoryId") { // 🔥 3. เพิ่มเงื่อนไขเคลียร์ค่า Category
+          dataToUpdate["Category"] = { disconnect: true };
+        }
+        else {
           dataToUpdate[k] = null;
         }
         return;
@@ -392,7 +411,13 @@ exports.updatePost = async (req, res) => {
         return;
       }
 
-      dataToUpdate[k] = v; // string/enum เดี่ยว ๆ
+      // 🔥 4. เพิ่มเงื่อนไขสำหรับอัปเดต Category
+      if (k === "categoryId") {
+        dataToUpdate["Category"] = { connect: { id: v } };
+        return;
+      }
+
+      dataToUpdate[k] = v;
     });
 
     const updatedPost = await prisma.propertyPost.update({
@@ -401,11 +426,9 @@ exports.updatePost = async (req, res) => {
     });
 
     // ====== อัปเดตสื่อ (รูป/วิดีโอ) เฉพาะเมื่อส่งไฟล์มาใหม่ ======
-    // รูปภาพ
     const newImages = filesOf(req.files, "images");
     let imageResult = null;
     if (newImages.length > 0) {
-      // ลบของเก่าทั้ง Cloudinary + DB
       const oldImages = await prisma.image.findMany({ where: { propertyPostId: id } });
       await Promise.all(
         oldImages.map((img) =>
@@ -414,7 +437,6 @@ exports.updatePost = async (req, res) => {
       );
       await prisma.image.deleteMany({ where: { propertyPostId: id } });
 
-      // ใส่ของใหม่
       imageResult = await prisma.image.createMany({
         data: newImages.map((file) => ({
           url: file.path || file.url,
@@ -426,11 +448,9 @@ exports.updatePost = async (req, res) => {
       });
     }
 
-    // วิดีโอ
     const newVideos = filesOf(req.files, "videos");
     let videoResult = null;
     if (newVideos.length > 0) {
-      // ลบของเก่าทั้ง Cloudinary + DB
       const oldVideos = await prisma.video.findMany({ where: { postId: id } });
       await Promise.all(
         oldVideos.map((v) =>
@@ -439,7 +459,6 @@ exports.updatePost = async (req, res) => {
       );
       await prisma.video.deleteMany({ where: { postId: id } });
 
-      // ใส่ของใหม่
       videoResult = await prisma.video.createMany({
         data: newVideos.map((file) => ({
           url: file.path || file.url,

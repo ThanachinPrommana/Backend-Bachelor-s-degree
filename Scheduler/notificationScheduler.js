@@ -106,46 +106,69 @@ export const checkAndSendDayOfAlerts = async () => {
 // --- ฟังก์ชันที่ 3: แจ้งเตือน ณ เวลานัดหมาย ---
 export const checkAndSendAtTimeAlerts = async () => {
   const now = new Date();
-  const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+  // ขยายช่วงเวลาเล็กน้อยเพื่อป้องกันการตกหล่น
+  const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
   try {
     const dueBookings = await prisma.booking.findMany({
       where: {
         isAtTimeAlertSent: false,
+        bookingStatus: 'CONFIRMED', // 🔥 ค้นหาเฉพาะการจองที่ยืนยันแล้ว และยังไม่ได้อัปสลิปสุดท้าย
         dateTimeSlot: {
-          startTime: { gte: oneMinuteAgo, lte: now },
+          startTime: { gte: fiveMinutesAgo, lte: now },
         },
       },
-      include: { Buyer: { include: { user: true } }, Seller: { include: { user: true } }, dateTimeSlot: true },
-    });
-    if (dueBookings.length === 0) {
-      return;
-    }
-    console.log(`🔥 [Scheduler] Found ${dueBookings.length} appointments due right now!`);
-    const notificationsToCreate = dueBookings.flatMap(booking => [
-      {
-        userId: booking.Buyer.userId,
-        referenceId: booking.id,
-        Title: 'ถึงเวลานัดหมายของคุณแล้ว!',
-        Message: `ขณะนี้เป็นเวลานัดหมายของคุณกับ ${booking.Seller.user.First_name} เวลา ${booking.dateTimeSlot.startTime.toLocaleTimeString('th-TH')} น.`,
-        Status: 'UNREAD',
-        relatedProcess: 'APPOINTMENT_NOW',
+      include: {
+        Buyer: { include: { user: true } },
+        Seller: { include: { user: true } },
+        dateTimeSlot: true
       },
-      {
-        userId: booking.Seller.userId,
-        referenceId: booking.id,
-        Title: 'ถึงเวลานัดหมายของคุณแล้ว!',
-        Message: `ขณะนี้เป็นเวลานัดหมายของคุณกับ ${booking.Buyer.user.First_name} เวลา ${booking.dateTimeSlot.startTime.toLocaleTimeString('th-TH')} น.`,
-        Status: 'UNREAD',
-        relatedProcess: 'APPOINTMENT_NOW',
-      }
-    ]);
+    });
+
+    if (dueBookings.length === 0) {
+      return; // ไม่มีนัดหมายที่ถึงเวลา
+    }
+
+    console.log(`🔥 [Scheduler] Found ${dueBookings.length} appointments due now! Preparing alerts...`);
+
+    // สร้างการแจ้งเตือนที่แตกต่างกันสำหรับผู้ซื้อและผู้ขาย
+    const notificationsToCreate = dueBookings.flatMap(booking => {
+      const appointmentTime = booking.dateTimeSlot.startTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+
+      return [
+        // --- 🔔 การแจ้งเตือนสำหรับผู้ซื้อ (Buyer) ---
+        {
+          userId: booking.Buyer.userId,
+          referenceId: booking.id,
+          Title: 'ถึงเวลานัดหมาย: กรุณาอัปโหลดสลิป',
+          Message: `ขณะนี้เป็นเวลานัดหมายของคุณ กรุณากดเพื่ออัปโหลดสลิปการชำระเงินส่วนที่เหลือ`,
+          Status: 'UNREAD',
+          // 🔥 ใช้ relatedProcess พิเศษเพื่อให้ Frontend รู้ว่าต้องเปิดหน้าอัปโหลด
+          relatedProcess: 'FINAL_SLIP_UPLOAD_REQUIRED',
+        },
+        // --- 🔔 การแจ้งเตือนสำหรับผู้ขาย (Seller) ---
+        {
+          userId: booking.Seller.userId,
+          referenceId: booking.id,
+          Title: 'ถึงเวลานัดหมายของคุณแล้ว!',
+          Message: `ขณะนี้เป็นเวลานัดหมายของคุณกับ ${booking.Buyer.user.First_name} เวลา ${appointmentTime} น.`,
+          Status: 'UNREAD',
+          relatedProcess: 'APPOINTMENT_NOW', // ผู้ขายแค่รับรู้ว่านัดเริ่มแล้ว
+        }
+      ]
+    });
+
+    // ทำ Transaction เพื่อสร้าง Notification และอัปเดตสถานะ Booking
     await prisma.$transaction([
       prisma.notification.createMany({ data: notificationsToCreate }),
       prisma.booking.updateMany({
         where: { id: { in: dueBookings.map(b => b.id) } },
-        data: { isAtTimeAlertSent: true },
+        data: {
+          isAtTimeAlertSent: true, // อัปเดตสถานะว่าส่งแจ้งเตือน "ณ เวลา" ไปแล้ว
+        },
       }),
     ]);
+
     console.log(`🚀 [Scheduler] Successfully sent ${notificationsToCreate.length} "at-time" alerts.`);
   } catch (error) {
     console.error('[Scheduler] Error processing "at-time" alerts:', error);

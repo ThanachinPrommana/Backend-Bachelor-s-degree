@@ -38,6 +38,8 @@ const {
   createDateTimeSlot,
   removeTimeSlot,
   removeBooking,
+  uploadFinalSlip,
+  confirmedSlipBySeller
 } = require("../controllers/user");
 const {
   createStripePaymentIntent
@@ -121,9 +123,13 @@ router.post("/user/booking", isAuthenticated, createBooking);
 router.delete("/user/remove/:bookingId", isAuthenticated, removeBooking)
 // Payment
 router.post("/create/payment", isAuthenticated, createStripePaymentIntent)
-// router.post(
-//   "/stripe/webhook",
-//   express.raw({ type: "application/json" }),
-//   handleStripeWebhook
-// );
+// Final UploadSlip
+router.post(
+  '/upload-final-slip/:bookingId',
+  isAuthenticated,             // 1. Middleware: ตรวจสอบก่อนว่าผู้ใช้ login แล้วหรือยัง
+  upload.single('finalSlip'),  // 2. Middleware: รับไฟล์จาก form-data ที่มีชื่อ field ว่า 'finalSlip' แล้วส่งไป Cloudinary
+  uploadFinalSlip              // 3. Controller: เมื่อ Middleware ทั้งสองทำงานเสร็จ จะเรียกใช้ฟังก์ชันนี้ต่อ
+);
+//confirmedSlipBySeller
+router.post("/confirmed-slip/:bookingId", isAuthenticated, confirmedSlipBySeller)
 module.exports = router;
