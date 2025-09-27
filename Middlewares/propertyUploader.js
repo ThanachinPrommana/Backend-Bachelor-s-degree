@@ -1,4 +1,4 @@
-// File: middleware/propertyUploader.js
+// File: Middlewares/propertyUploader.js
 
 import multer from 'multer';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
@@ -24,10 +24,10 @@ const storage = new CloudinaryStorage({
       resourceType = "video";
       allowedFormats = ["mp4", "mov", "avi", "mkv"];
     } else {
-
-      return {
-        error: "Invalid file type uploaded.",
-      };
+      // ให้ fileFilter เป็นตัวบล็อกไฟล์ที่ไม่รองรับ (อย่าส่ง error object กลับไปที่ params)
+      folderName = "raw_uploads";
+      resourceType = "raw";
+      allowedFormats = undefined;
     }
 
     // คืนค่า object ที่มี configuration ที่ถูกต้องกลับไป
@@ -35,11 +35,9 @@ const storage = new CloudinaryStorage({
       folder: folderName,
       resource_type: resourceType,
       allowed_formats: allowedFormats,
-
     };
   },
 });
-
 
 const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith("image") || file.mimetype.startsWith("video")) {
@@ -54,7 +52,7 @@ const propertyUpload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 1024 * 1024 * 100,
+    fileSize: 1024 * 1024 * 100, // 100MB
   },
 });
 

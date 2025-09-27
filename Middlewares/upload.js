@@ -1,3 +1,5 @@
+// File: Middlewares/upload.js
+
 import multer from 'multer';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import cloudinary from '../utils/cloudinary.js';
@@ -6,15 +8,17 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: "profile_images",
+    resource_type: "image",
     allowed_formats: ["jpg", "jpeg", "png"],
     transformation: [{ width: 500, height: 500, crop: "limit" }],
-  },  
-} )
+  },
+});
+
 //   params: async (req, file) => {
 //     let folder
 //     let resource_type
 //     let allowed_formats
-
+//
 //     if (file.mimetype.startsWith("image")) {
 //       folder = "property_images"
 //       resource_type = "image"
@@ -43,6 +47,7 @@ const storage = new CloudinaryStorage({
 //     cb(new Error("File type not supported!"), false); // ไม่อนุญาต
 //   }
 // };
+
 const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith("image")) {
     cb(null, true);
@@ -56,7 +61,7 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 1024 * 1024 * 100 // จำกัดขนาดไฟล์ 100MB 
+    fileSize: 1024 * 1024 * 100, // จำกัดขนาดไฟล์ 100MB 
   }
 });
 

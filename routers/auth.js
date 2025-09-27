@@ -1,8 +1,9 @@
-// routes/auth.js
-const express = require("express");
+// routes/auth.js (merged & reconciled, ESM)
+
+import express from "express";
 const router = express.Router();
 
-const {
+import {
   preRegister,
   login,
   forgotPassword,
@@ -11,9 +12,11 @@ const {
   getProfile,
   logout,
   registerSeller,
-} = require("../controllers/auth");
+} from "../controllers/auth.js";
 
-const { isAuthenticated, upload } = require("../Middlewares/authCheck");
+import { isAuthenticated } from "../Middlewares/authCheck.js";
+import { uploadNationalId } from "../Middlewares/uploadNationalIdImage.js";
+// ^ ใช้ตัวอัปโหลดเฉพาะสำหรับบัตรประชาชน (โฟลเดอร์ seller_documents)
 
 // สมัคร/ยืนยัน/ล็อกอิน
 router.post("/preRegister", preRegister);
@@ -24,7 +27,7 @@ router.post("/login", login);
 router.post(
   "/seller/register",
   isAuthenticated,
-  upload.single("nationalIdImage"),
+  uploadNationalId.single("nationalIdImage"),
   registerSeller
 );
 
@@ -38,4 +41,4 @@ router.get("/profiles/user", isAuthenticated, getProfile);
 // ออกจากระบบ
 router.post("/logout", logout);
 
-module.exports = router;
+export default router;

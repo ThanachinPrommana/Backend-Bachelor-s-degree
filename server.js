@@ -100,6 +100,8 @@
 //     console.log(`✅ Admin panel at http://localhost:${PORT}/admin`);
 //     startNotificationSchedulers();
 // });
+
+
 // --- server.js (เปลี่ยนเป็น ES Modules) ---
 
 import express from 'express';
@@ -114,33 +116,46 @@ import { fileURLToPath } from 'url';
 // Prisma ยังคงอยู่เผื่อส่วนอื่นของแอปคุณต้องใช้
 import prisma from './config/prisma.js'; 
 
+// ✅ import ฟังก์ชัน scheduler แบบ ESM (named export)
 import { startNotificationSchedulers } from "./Scheduler/notificationScheduler.js";
+
+// Stripe webhook controller
 import { handleStripeWebhook } from "./controllers/payment.js";
 
 const PORT = process.env.PORT || 8200;
 const app = express();
 
-// --- Middlewares ---
+// --- 2. Middlewares ---
 app.use(morgan("dev"));
 app.use(cors({
     origin: process.env.CLIENT_URL || 'http://localhost:5173',
     credentials: true,
 }));
+
+// Webhook ต้องอยู่ก่อน express.json()
 app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), handleStripeWebhook);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
 const sessionOptions = {
     secret: process.env.SESSION_SECRET || "some-strong-secret",
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 2 * 60 * 60 * 1000, httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" }
+    cookie: { 
+        maxAge: 2 * 60 * 60 * 1000, // 2 hours
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production", // เป็น true เมื่อ deploy จริง
+        sameSite: "lax"
+    }
 };
 app.use(session(sessionOptions));
 
-// --- API Routers ---
+// --- 4. API Routers ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const routersPath = path.join(__dirname, 'routers');
+
 (async () => {
     for (const filename of readdirSync(routersPath)) {
         if (filename.endsWith('.js')) {
@@ -150,8 +165,9 @@ const routersPath = path.join(__dirname, 'routers');
     }
 })();
 
-// --- Server Start ---
+// --- 5. เริ่มต้น Server ---
 app.listen(PORT, () => {
     console.log(`🚀 Server on port ${PORT}`);
+    // ✅ เรียกใช้ Scheduler หลังเซิร์ฟเวอร์สตาร์ท
     startNotificationSchedulers();
 });

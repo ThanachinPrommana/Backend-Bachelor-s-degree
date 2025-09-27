@@ -1,14 +1,14 @@
-// middlewares/authCheck.js
-const jwt = require("jsonwebtoken");
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+// Middlewares/authCheck.js (merged & reconciled, ESM)
 
-const multer = require("multer");
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const cloudinary = require("../utils/cloudinary");
+import jwt from "jsonwebtoken";
+import prisma from "../config/prisma.js"; // ใช้ instance กลางของโปรเจกต์
+import multer from "multer";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import cloudinary from "../utils/cloudinary.js";
 
 /* ============================
  *  Multer / Cloudinary Upload
+ *  - กำหนดครั้งเดียว/ใช้ซ้ำ
  * ============================ */
 const storage = new CloudinaryStorage({
   cloudinary,
@@ -27,7 +27,7 @@ const storage = new CloudinaryStorage({
         allowed_formats: ["mp4", "mov", "avi", "mkv"],
       };
     }
-    // ปล่อยให้ fileFilter เป็นคนบล็อกไฟล์ที่ไม่รองรับ
+    // ให้ fileFilter เป็นตัวบล็อกไฟล์ที่ไม่รองรับ
     return { folder: "raw_uploads", resource_type: "raw" };
   },
 });
@@ -55,7 +55,8 @@ const authCheck = async (req, res, next) => {
     const token = auth.startsWith("Bearer ") ? auth.split(" ")[1] : null;
     if (!token) return res.status(401).json({ message: "No token provided" });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // ใช้ SECRETKEY ให้ตรงกับ .env ปัจจุบัน
+    const decoded = jwt.verify(token, process.env.SECRETKEY);
 
     const user = await prisma.user.findUnique({
       where: { id: String(decoded.id) },
@@ -65,7 +66,7 @@ const authCheck = async (req, res, next) => {
 
     req.user = {
       id: String(user.id),
-      email: user.Email,        // Prisma field 'Email'
+      email: user.Email, // ฟิลด์ใน schema คือ Email (ตัวใหญ่)
       userType: user.userType,
     };
     next();
@@ -88,20 +89,18 @@ const isAuthenticated = (req, res, next) => {
     }
 
     const sessUser = req.session.user;
-    // ✅ โปรเจกต์คุณเก็บ userId ไว้ใน session
     const uid = sessUser?.userId ?? sessUser?.id ?? null;
     if (!uid) {
       console.warn("FAILURE: User NOT found in session.");
       return res.status(401).json({ message: "You are not logged in" });
     }
 
-    console.log("SUCCESS: User found in session. Proceeding...");
+    // inject user (ช่วยให้ downstream middlewares ใช้รูปแบบเดียวกับ authCheck)
     req.user = {
       id: String(uid),
       email: sessUser.Email ?? sessUser.email ?? null,
       userType: sessUser.userType,
     };
-
     next();
   } catch (err) {
     console.error("[isAuthenticated] error:", err?.message);
@@ -109,19 +108,17 @@ const isAuthenticated = (req, res, next) => {
   }
 };
 
+/* ============================
+ *  Role Guard: Seller only
+ * ============================ */
 const isSeller = (req, res, next) => {
-  const sessUser = req.session?.user;
-  const userType = sessUser?.userType ?? req.user?.userType;
+  const userType = req.session?.user?.userType ?? req.user?.userType;
   if (userType === "Seller") return next();
   return res
     .status(403)
     .json({ message: "Forbidden: คุณไม่มีสิทธิ์ในการเข้าถึงส่วนนี้" });
 };
 
-// ✅ export ให้ router ใช้ได้แน่นอน
-module.exports = {
-  authCheck,       // JWT bearer
-  isAuthenticated, // session-based
-  isSeller,
-  upload,          // ใช้ upload.single("nationalIdImage")
-};
+// ✅ exports ให้ router ใช้งานได้แน่นอน
+export { authCheck, isAuthenticated, isSeller, upload };
+// eg. upload.single("nationalIdImage"), upload.fields([{name:"images"},{name:"videos"}])

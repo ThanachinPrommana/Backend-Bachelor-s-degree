@@ -1,23 +1,29 @@
-const prisma = require("../config/prisma");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const {
-  Parking_Needs: ParkingNeedsEnum,
-  Nearby_Facilities: NearbyFacilitiesEnum,
-  Lifestyle_Preferences: LifestylePreferencesEnum,
-} = require("@prisma/client");
-const { sendResetEmail, verifyemail } = require("../utils/email");
+// controllers/auth.js  (ESM version)
 
-// ----- helper: ดึง userId ให้ชัวร์ -----
+import prisma from "../config/prisma.js";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import {
+  Parking_Needs as ParkingNeedsEnum,
+  Nearby_Facilities as NearbyFacilitiesEnum,
+  Lifestyle_Preferences as LifestylePreferencesEnum,
+} from "@prisma/client";
+import { sendResetEmail, verifyemail } from "../utils/email.js";
+
+// ---------- Helpers ----------
 const getSessionUserId = (req) => {
   const u = req.session?.user;
   return u?.userId ?? u?.id ?? null; // รองรับทั้ง userId และ id
 };
 
-// ===== preRegister =====
-const preRegister = async (req, res) => {
+const FRONTEND_URL =
+  process.env.FRONTEND_URL?.replace(/\/+$/, "") || "http://localhost:5173";
+
+// ---------- preRegister ----------
+export const preRegister = async (req, res) => {
   try {
     const { Email, Password, Phone, First_name, Last_name } = req.body;
+
     if (!Email) return res.status(400).json({ message: "Email is required!!" });
     if (!Password)
       return res.status(400).json({ message: "Password is required!!" });
@@ -42,18 +48,18 @@ const preRegister = async (req, res) => {
     );
 
     const encodedToken = Buffer.from(token).toString("base64");
-    const link = `http://localhost:5173/verifyemail?token=${encodedToken}`;
+    const link = `${FRONTEND_URL}/verifyemail?token=${encodedToken}`;
 
-    verifyemail(Email, link);
+    await verifyemail(Email, link);
     return res.json({ message: "Verification email sent" });
   } catch (err) {
-    console.error(err);
+    console.error("preRegister error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
 
-// ===== verify and register (Buyer) =====
-const verifyandregister = async (req, res) => {
+// ---------- verify & register (Buyer) ----------
+export const verifyandregister = async (req, res) => {
   try {
     const {
       token: encodedToken,
@@ -63,36 +69,68 @@ const verifyandregister = async (req, res) => {
       Family_Size,
       Preferred_Province,
       Preferred_District,
-      National_ID,
-      Company_Name,
-      RealEstate_License,
-      Status,
+      National_ID, // reserved for future Seller path
+      Company_Name, // reserved
+      RealEstate_License, // reserved
+      Status, // reserved
       Parking_Needs,
       Nearby_Facilities,
       Lifestyle_Preferences,
       Special_Requirements,
     } = req.body;
 
-    const originalToken = Buffer.from(encodedToken, "base64").toString(
-      "ascii"
-    );
+    if (!encodedToken)
+      return res.status(400).json({ message: "Missing verification token" });
+
+    // ✅ Validate required fields for Buyer (ตาม schema.prisma)
+    if (
+      Monthly_Income == null ||
+      Family_Size == null ||
+      !Preferred_Province ||
+      !Preferred_District
+    ) {
+      return res.status(400).json({
+        message:
+          "Missing required Buyer fields: Monthly_Income, Family_Size, Preferred_Province, Preferred_District",
+      });
+    }
+
+    const originalToken = Buffer.from(encodedToken, "base64").toString("ascii");
     const decoded = jwt.verify(originalToken, process.env.SECRETKEY);
     const { Email, Password, Phone, First_name, Last_name } = decoded;
 
-    // ถ้าฟิลด์พวกนี้ optional ให้เช็คก่อนค่อย validate
-    if (Parking_Needs && !Object.values(ParkingNeedsEnum).includes(Parking_Needs))
+    // Validate enums only if provided (เพื่อให้สอดคล้องกับฟอร์มที่ optional)
+    if (
+      Parking_Needs &&
+      !Object.values(ParkingNeedsEnum).includes(Parking_Needs)
+    ) {
       return res.status(400).json({ message: "Invalid Parking_Needs value" });
-    if (Nearby_Facilities && !Object.values(NearbyFacilitiesEnum).includes(Nearby_Facilities))
-      return res.status(400).json({ message: "Invalid Nearby_Facilities value" });
-    if (Lifestyle_Preferences && !Object.values(LifestylePreferencesEnum).includes(Lifestyle_Preferences))
+    }
+    if (
+      Nearby_Facilities &&
+      !Object.values(NearbyFacilitiesEnum).includes(Nearby_Facilities)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Invalid Nearby_Facilities value" });
+    }
+    if (
+      Lifestyle_Preferences &&
+      !Object.values(LifestylePreferencesEnum).includes(Lifestyle_Preferences)
+    ) {
       return res
         .status(400)
         .json({ message: "Invalid Lifestyle_Preferences value" });
+    }
+
+    // ป้องกันเคสกดลิงก์ซ้ำ
+    const dup = await prisma.user.findFirst({ where: { Email } });
+    if (dup) return res.status(400).json({ message: "Email already exists" });
 
     await prisma.user.create({
       data: {
         Email,
-        Password,
+        Password, // already hashed in preRegister
         Phone,
         First_name,
         Last_name,
@@ -100,15 +138,15 @@ const verifyandregister = async (req, res) => {
         Buyer: {
           create: {
             DateofBirth: DateofBirth ? new Date(DateofBirth) : null,
-            Occupation,
-            Monthly_Income: Monthly_Income ? Number(Monthly_Income) : null,
-            Family_Size: Family_Size ? Number(Family_Size) : null,
-            Preferred_Province,
-            Preferred_District,
-            Parking_Needs,
-            Nearby_Facilities,
-            Lifestyle_Preferences,
-            Special_Requirements,
+            Occupation: Occupation || null,
+            Monthly_Income: Number(Monthly_Income), // ✅ required
+            Family_Size: Number(Family_Size),       // ✅ required
+            Preferred_Province,                     // ✅ required
+            Preferred_District,                     // ✅ required
+            Parking_Needs: Parking_Needs || null,
+            Nearby_Facilities: Nearby_Facilities || null,
+            Lifestyle_Preferences: Lifestyle_Preferences || null,
+            Special_Requirements: Special_Requirements || null,
           },
         },
       },
@@ -116,27 +154,24 @@ const verifyandregister = async (req, res) => {
 
     return res.send("Register success");
   } catch (err) {
-    console.log(err);
+    console.error("verifyandregister error:", err);
     return res.status(500).json({ message: "Server Error" });
   }
 };
 
-// ===== login =====
-const login = async (req, res) => {
+// ---------- login ----------
+export const login = async (req, res) => {
   try {
     const { Email, Password } = req.body;
     const user = await prisma.user.findFirst({
       where: { Email },
       include: { Seller: true, Buyer: true },
     });
-    if (!user) {
-      return res.status(400).json({ message: "Email not found" });
-    }
+    if (!user) return res.status(400).json({ message: "Email not found" });
 
     const is_Match = await bcrypt.compare(Password, user.Password);
-    if (!is_Match) {
+    if (!is_Match)
       return res.status(400).json({ message: "Password invalid" });
-    }
 
     const payload = {
       userId: user.id,
@@ -174,13 +209,13 @@ const login = async (req, res) => {
       });
     });
   } catch (err) {
-    console.error(err);
+    console.error("login error:", err);
     return res.status(500).json({ message: "Server Error" });
   }
 };
 
-// ===== forgot password =====
-const forgotPassword = async (req, res) => {
+// ---------- forgot password ----------
+export const forgotPassword = async (req, res) => {
   try {
     const { Email } = req.body;
     if (!Email) return res.status(400).json({ message: "Email is required" });
@@ -188,10 +223,11 @@ const forgotPassword = async (req, res) => {
     const user = await prisma.user.findFirst({ where: { Email } });
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    // ให้ JWT และ DB token หมดอายุสอดคล้องกัน = 10 นาที
     const token = jwt.sign(
       { userId: user.id, email: user.Email },
       process.env.SECRETKEY,
-      { expiresIn: "1h" }
+      { expiresIn: "10m" }
     );
 
     await prisma.passwordResetToken.create({
@@ -202,52 +238,56 @@ const forgotPassword = async (req, res) => {
       },
     });
 
-    const resetLink = `http://localhost:5173/resetpassword?token=${token}`;
+    const resetLink = `${FRONTEND_URL}/resetpassword?token=${token}`;
     await sendResetEmail(Email, resetLink);
 
     return res.json({ message: "Reset link sent to your email." });
   } catch (err) {
-    console.error(err);
+    console.error("forgotPassword error:", err);
     return res.status(500).json({ message: "Server Error" });
   }
 };
 
-// ===== reset password =====
-const resetPassword = async (req, res) => {
-  const { token, Password } = req.body;
+// ---------- reset password ----------
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, Password } = req.body;
+    if (!token || !Password)
+      return res.status(400).json({ message: "Missing token or password" });
 
-  const tokenEntry = await prisma.passwordResetToken.findFirst({
-    where: { token },
-  });
-  if (!tokenEntry) {
-    return res.status(400).json({ message: "Token invalid" });
+    const tokenEntry = await prisma.passwordResetToken.findFirst({
+      where: { token },
+    });
+    if (!tokenEntry)
+      return res.status(400).json({ message: "Token invalid" });
+    if (tokenEntry.expiresAt < new Date())
+      return res.status(400).json({ message: "Token expired" });
+
+    const hashed = await bcrypt.hash(Password, 10);
+    await prisma.user.update({
+      where: { id: tokenEntry.userId },
+      data: { Password: hashed },
+    });
+
+    // หาก schema ไม่ได้ unique ที่ field token ให้ใช้ deleteMany แทน
+    await prisma.passwordResetToken.deleteMany({ where: { token } });
+
+    return res.json({ message: "Password updated" });
+  } catch (err) {
+    console.error("resetPassword error:", err);
+    return res.status(500).json({ message: "Server Error" });
   }
-  if (tokenEntry.expiresAt < new Date()) {
-    return res.status(400).json({ message: "Token expired" });
-  }
-
-  const hashed = await bcrypt.hash(Password, 10);
-
-  await prisma.user.update({
-    where: { id: tokenEntry.userId },
-    data: { Password: hashed },
-  });
-
-  await prisma.passwordResetToken.delete({ where: { token } });
-
-  return res.json({ message: "Password updated" });
 };
 
-// ===== get profile =====
-const getProfile = async (req, res) => {
+// ---------- getProfile ----------
+export const getProfile = async (req, res) => {
   try {
-    const id = req.session?.user?.userId ?? req.session?.user?.id ?? null;
+    const id = getSessionUserId(req);
     if (!id) return res.status(401).json({ message: "Unauthorized" });
 
     const user = await prisma.user.findUnique({
       where: { id },
       include: {
-
         Seller: {
           select: {
             id: true,
@@ -257,8 +297,8 @@ const getProfile = async (req, res) => {
             Status: true,
             nationalIdImage: true,
             DateTimeSlot: true,
-            Booking: true
-          }
+            Booking: true,
+          },
         },
         Buyer: {
           select: {
@@ -266,24 +306,21 @@ const getProfile = async (req, res) => {
             Occupation: true,
             Monthly_Income: true,
             Family_Size: true,
+            Preferred_Province: true,   // ✅ เพิ่มให้ครบ
             Preferred_District: true,
             Parking_Needs: true,
             Nearby_Facilities: true,
             Lifestyle_Preferences: true,
-            Booking: true
-          }
+            Booking: true,
+          },
         },
         Deposit: {
           select: {
             id: true,
             Deposit_Status: true,
             Deposit_Amount: true,
-            Post: {
-              select: {
-                Property_Name: true
-              }
-            }
-          }
+            Post: { select: { Property_Name: true } },
+          },
         },
         Notification: true,
         PropertyPost: {
@@ -299,8 +336,8 @@ const getProfile = async (req, res) => {
             Sell_Rent: true,
             Image: true,
             Deposit: true,
-            sellerId:true
-          }
+            sellerId: true,
+          },
         },
         DocumentUpload: {
           orderBy: { createdAt: "desc" },
@@ -319,7 +356,7 @@ const getProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.Password) delete user.Password;
 
-    // ✅ Sync session ให้ตรงกับ DB เสมอ (สำคัญสำหรับการสร้างโพสต์ให้ผ่าน 403)
+    // Sync session กับข้อมูลล่าสุดจาก DB (กัน 403 ตอนสร้างโพสต์/สิทธิ์)
     req.session.user = {
       userId: user.id,
       Email: user.Email,
@@ -338,15 +375,14 @@ const getProfile = async (req, res) => {
     console.log("Successfully fetched profile for user:", user.id);
     return res.status(200).json({ user });
   } catch (error) {
-    console.error("Error in getProfile:", error);
+    console.error("getProfile error:", error);
     return res.status(500).json({ message: "Server Error" });
   }
 };
 
-// ===== logout =====
-const logout = (req, res) => {
+// ---------- logout ----------
+export const logout = (req, res) => {
   console.log("Logout route called");
-  console.log("Session before destroy:", req.session);
   try {
     req.session.destroy((err) => {
       if (err) {
@@ -365,9 +401,8 @@ const logout = (req, res) => {
   }
 };
 
-// ===== register seller =====
-// ...เดิมข้างบนคงไว้
-const registerSeller = async (req, res) => {
+// ---------- registerSeller ----------
+export const registerSeller = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "กรุณาแนบรูปภาพบัตรประชาชน" });
@@ -404,8 +439,8 @@ const registerSeller = async (req, res) => {
           Company_Name,
           RealEstate_License,
           Status: "PENDING",
-          nationalIdImage: req.file.path,
-          publicId: req.file.filename,
+          nationalIdImage: req.file.path, // Cloudinary URL
+          publicId: req.file.filename, // Cloudinary public ID
         },
       });
 
@@ -416,10 +451,8 @@ const registerSeller = async (req, res) => {
 
       return newSeller;
     });
-    req.session.user.userType = "Seller";
-    req.session.user.sellerId = result.id; 
 
-    // ✅ อัปเดต session ให้กลายเป็น Seller ทันที
+    // Update session -> เป็น Seller ทันที
     req.session.user = {
       ...(req.session.user || {}),
       userId,
@@ -427,10 +460,8 @@ const registerSeller = async (req, res) => {
       sellerId: result.id,
     };
     req.session.save((err) => {
-      if (err) {
+      if (err)
         console.error("Session save error after registerSeller:", err);
-        // ไม่ fail งานหลัก แค่ log
-      }
     });
 
     return res.status(201).json({
@@ -439,20 +470,7 @@ const registerSeller = async (req, res) => {
       seller: result,
     });
   } catch (err) {
-    console.error(err);
+    console.error("registerSeller error:", err);
     return res.status(400).json({ message: err.message || "Server error" });
   }
-};
-
-
-// ✅ รวม export ให้ router ดึงได้แน่นอน
-module.exports = {
-  preRegister,
-  verifyandregister,
-  login,
-  forgotPassword,
-  resetPassword,
-  getProfile,
-  logout,
-  registerSeller,
 };

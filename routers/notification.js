@@ -1,26 +1,26 @@
-// routes/notification.js
-const express = require("express");
-const router = express.Router();
+// routes/notification.js (ESM)
 
-const {
+import express from "express";
+import {
   getuserNotifications,
   removeNotification,
   removeNotiAll,
-  markAsRead,
-} = require("../controllers/notification");
+  markAsRead,          // ✅ เพิ่ม
+} from "../controllers/notification.js";
+import { isAuthenticated } from "../Middlewares/authCheck.js";
 
-const { isAuthenticated } = require("../middlewares/authCheck");
+const router = express.Router();
 
-// ดึงแจ้งเตือนของ user (ต้องเป็นเจ้าของเท่านั้น)
-router.get("/user/notification/:userId", isAuthenticated, getuserNotifications);
+// Get notifications for a user (userId เป็น optional)
+router.get("/user/notification/:userId?", isAuthenticated, getuserNotifications);
 
-// ทำเครื่องหมายว่าอ่านแล้ว
+// Mark single notification as read
 router.patch("/user/notification/:notiId/read", isAuthenticated, markAsRead);
 
-// ลบแจ้งเตือน 1 อัน (ต้องเป็นของตัวเอง)
+// Remove single notification
 router.delete("/user/remove/noti/:notiId", isAuthenticated, removeNotification);
 
-// ลบแจ้งเตือนทั้งหมดของ user ที่ล็อกอิน
+// Remove all notifications of current user
 router.delete("/user/removeAll/noti", isAuthenticated, removeNotiAll);
 
-module.exports = router;
+export default router;

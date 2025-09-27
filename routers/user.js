@@ -1,134 +1,91 @@
-import express from "express";
-import upload from "../Middlewares/upload.js";
-import uploadDocument from "../Middlewares/document.js";
-import { isAuthenticated, isSeller } from "../Middlewares/authCheck.js";
-import { handleStripeWebhook } from "../controllers/payment.js";
+// routes/user.js (ESM)
 
+import express from "express";
 const router = express.Router();
 
 import {
-  // Admin / Management
   updateStatusSeller,
   deleteUser,
-
-  // Lists / Search
   listUserSeller,
   listUserBuyer,
-  searchFiltersSeller,
-
-  // Profiles (read)
   getUserProfile,
-  getSellerProfile,
-
-  // Profiles (self update)
   updateUser,
-  updateSeller,
   updateimage,
-
-  // Seller posts management (self)
+  getSellerProfile,
+  updateSeller,
   getpostBySeller,
-  deletePostBySeller,
-
-  // Deposits
-  createdeposite,
   getdeposits,
-  updateDepositStatus,
-
-  // Documents
   useruploadDocument,
-
-  createBooking,
-
-  createDateTimeSlot,
-  removeTimeSlot,
-  removeBooking,
-  uploadFinalSlip,
-  confirmedSlipBySeller
+  searchFiltersSeller,
+  deletePostBySeller,
+  createdeposite,
+  updateDepositStatus,
 } from "../controllers/user.js";
 
-import { createStripePaymentIntent } from "../controllers/payment.js";
+import { isAuthenticated } from "../Middlewares/authCheck.js";
+import upload from "../Middlewares/upload.js";             // ✅ ใช้อัปโหลดรูปโปรไฟล์
+import uploadDocument from "../Middlewares/document.js";   // ✅ ใช้อัปโหลดเอกสารผู้ใช้
 
-// -------------------------------------------------------------
-// Admin / Management (ควรมี adminOnly เพิ่มเติม ถ้ามี middleware)
-// -------------------------------------------------------------
+// ==================== Buyer routes ====================
 
-// อัปเดตสถานะผู้ขาย (APPROVED/REJECTED/PENDING)
-router.patch("/seller/:sellerId/status", isAuthenticated, updateStatusSeller);
-
-// ลบผู้ใช้
-router.delete("/user/:id", isAuthenticated, deleteUser);
-
-// -------------------------------------------------------------
-// Lists / Search
-// -------------------------------------------------------------
-
-router.get("/userSeller", listUserSeller);
+// ดึงรายชื่อ Buyer ทั้งหมด
 router.get("/userBuyer", listUserBuyer);
 
-// ค้นหาโพสต์ของผู้ขาย (เฉพาะของตัวเอง)
-router.get("/search/post/seller", isAuthenticated, searchFiltersSeller);
+// ดึงโปรไฟล์ Buyer ตาม id
+router.get("/profile/:id", getUserProfile);
 
-// -------------------------------------------------------------
-// Profiles (read-only by id) — ใช้ภายนอก/แอดมิน
-// -------------------------------------------------------------
-
-router.get("/profileseller/:id", getSellerProfile); // ยังไม่ใช้ตอนนี้
-router.get("/profile/:id", getUserProfile);         // โปรไฟล์ Buyer ตาม id
-
-// -------------------------------------------------------------
-// Profiles (self update)
-// -------------------------------------------------------------
-
-// อัปเดตโปรไฟล์ “เฉพาะผู้ใช้/ผู้ซื้อ” (User + Buyer บางส่วน)
+// อัปเดตโปรไฟล์ Buyer (ต้องล็อกอิน)
 router.patch("/profile", isAuthenticated, updateUser);
 
-// อัปเดตแบบรวม (User + Buyer + Seller) สำหรับผู้ที่เป็น Seller
-router.patch("/profileseller", isAuthenticated, updateSeller);
-
-// อัปเดตรูปโปรไฟล์
-router.post("/image", isAuthenticated, upload.single("image"), updateimage);
-
-// -------------------------------------------------------------
-// Seller posts management (self)
-// -------------------------------------------------------------
-
-router.get("/post/seller", isAuthenticated, getpostBySeller);
-router.delete("/seller/remove/post/:postId", isAuthenticated, deletePostBySeller);
-
-// -------------------------------------------------------------
-// Deposits
-// -------------------------------------------------------------
-
+// สร้างข้อมูลการมัดจำ
 router.post("/user/create/deposit", isAuthenticated, createdeposite);
 
-// NOTE: ใช้ session ระบุตัวผู้ใช้ที่ล็อกอิน
-router.get("/deposit", isAuthenticated, getdeposits);
+// ดึงข้อมูลมัดจำทั้งหมด
+router.get("/deposit", getdeposits);
 
-// ผู้ขายยืนยัน/ปฏิเสธมัดจำ
-router.patch("/update/status/deposit/:depositId", isAuthenticated, updateDepositStatus);
-
-// -------------------------------------------------------------
-// Documents
-// -------------------------------------------------------------
-
-router.post("/document", uploadDocument.single("document"), useruploadDocument);
-
-//DateSlot
-router.post("/seller/slot", isAuthenticated, isSeller, createDateTimeSlot);
-router.delete("/seller/remove/:timeSlotId", isAuthenticated, removeTimeSlot)
-//Booking
-router.post("/user/booking", isAuthenticated, createBooking);
-router.delete("/user/remove/:bookingId", isAuthenticated, removeBooking)
-// Payment
-router.post("/create/payment", isAuthenticated, createStripePaymentIntent)
-// Final UploadSlip
-router.post(
-  '/upload-final-slip/:bookingId',
-  isAuthenticated,             // 1. Middleware: ตรวจสอบก่อนว่าผู้ใช้ login แล้วหรือยัง
-  upload.single('finalSlip'),  // 2. Middleware: รับไฟล์จาก form-data ที่มีชื่อ field ว่า 'finalSlip' แล้วส่งไป Cloudinary
-  uploadFinalSlip              // 3. Controller: เมื่อ Middleware ทั้งสองทำงานเสร็จ จะเรียกใช้ฟังก์ชันนี้ต่อ
+// อัปเดตสถานะมัดจำ
+router.patch(
+  "/update/status/deposit/:depositId",
+  isAuthenticated,
+  updateDepositStatus
 );
-//confirmedSlipBySeller
-router.post("/confirmed-slip/:bookingId", isAuthenticated, confirmedSlipBySeller)
+
+// ==================== Uploads ====================
+
+// อัปโหลดรูปโปรไฟล์
+router.post("/image", isAuthenticated, upload.single("image"), updateimage);
+
+// อัปโหลดเอกสารผู้ใช้ (pdf, doc, jpg, png ฯลฯ)
+router.post(
+  "/document",
+  isAuthenticated,
+  uploadDocument.single("document"),
+  useruploadDocument
+);
+
+// ==================== Seller routes ====================
+
+// ดึงโปรไฟล์ Seller ตาม id
+router.get("/seller/profile/:id", getSellerProfile);
+
+// อัปเดตโปรไฟล์ Seller
+router.patch("/seller/profile", isAuthenticated, updateSeller);
+
+// ดึงโพสต์ทั้งหมดของ Seller
+router.get("/seller/posts/:id", getpostBySeller);
+
+// อัปเดตสถานะ Seller (Admin ใช้)
+router.patch("/seller/status/:id", isAuthenticated, updateStatusSeller);
+
+// ลบ Seller ออกจากระบบ
+router.delete("/seller/:id", isAuthenticated, deleteUser);
+
+// ลบโพสต์ของ Seller
+router.delete("/seller/post/:id", isAuthenticated, deletePostBySeller);
+
+// ==================== Search ====================
+
+// ฟิลเตอร์ค้นหาสำหรับ Seller
+router.post("/search/filters/seller", searchFiltersSeller);
 
 export default router;

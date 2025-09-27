@@ -1,6 +1,7 @@
-// controllers/document.js
-const prisma = require("../config/prisma");
-const cloudinary = require("../utils/cloudinary");
+// controllers/document.js (merged & reconciled, ESM)
+
+import prisma from "../config/prisma.js";
+import cloudinary from "../utils/cloudinary.js";
 
 // ---------- Helpers ----------
 const getSessionUserId = (req) => {
@@ -10,10 +11,10 @@ const getSessionUserId = (req) => {
 
 const getSessionUserType = (req) => {
   const t = req.session?.user?.userType ?? req.session?.user?.role ?? "";
-  return String(t).toUpperCase(); // เทียบแบบตัวใหญ่
+  return String(t).toUpperCase(); // เทียบแบบตัวใหญ่ (SELLER/BUYER/ADMIN)
 };
 
-// แปลง documentId ให้เข้ากับชนิดใน Prisma (ถ้าเป็น Int)
+// แปลง documentId ให้เข้ากับชนิดใน Prisma (ถ้า schema ใช้ Int)
 const coerceId = (raw) => {
   if (raw == null) return raw;
   // ถ้าเป็น string ตัวเลขล้วน → Number, อย่างอื่นคงเดิม (เช่น uuid)
@@ -21,17 +22,20 @@ const coerceId = (raw) => {
 };
 
 // ========== อนุมัติ/ปฏิเสธเอกสาร ==========
-exports.approveDocument = async (req, res) => {
+export const approveDocument = async (req, res) => {
   try {
     const sessionUserId = getSessionUserId(req);
     if (!sessionUserId) {
-      return res.status(401).json({ message: "Unauthorized, please login first" });
+      return res
+        .status(401)
+        .json({ message: "Unauthorized, please login first" });
     }
 
     const userType = getSessionUserType(req);
-    if (userType !== "SELLER") {
+    // เดิม: อนุญาตเฉพาะ SELLER; เพิ่ม ADMIN ให้ทำได้ด้วย (ถ้าไม่ต้องการ ลบบรรทัด ADMIN ออก)
+    if (!["SELLER", "ADMIN"].includes(userType)) {
       return res.status(403).json({
-        message: "Forbidden: Only sellers can approve documents.",
+        message: "Forbidden: Only sellers/admins can approve documents.",
       });
     }
 
@@ -54,11 +58,14 @@ exports.approveDocument = async (req, res) => {
       return res.status(404).json({ message: "Document not found" });
     }
 
-    // อนุญาตเฉพาะเจ้าของโพสต์เท่านั้น
-    if (documentToUpdate?.Post?.userId !== sessionUserId) {
-      return res
-        .status(403)
-        .json({ message: "Forbidden: You are not the owner of this post." });
+    // อนุญาตเฉพาะ "เจ้าของโพสต์" หรือ "ADMIN" เท่านั้น
+    const postOwnerId = documentToUpdate?.Post?.userId ?? null;
+    if (userType !== "ADMIN") {
+      if (!postOwnerId || postOwnerId !== sessionUserId) {
+        return res
+          .status(403)
+          .json({ message: "Forbidden: You are not the owner of this post." });
+      }
     }
 
     if (status === "APPROVED") {
@@ -67,9 +74,10 @@ exports.approveDocument = async (req, res) => {
         data: { Review_Status: "APPROVED" },
       });
 
+      // แจ้งเตือนผู้ส่งเอกสาร (Buyer)
       await prisma.notification.create({
         data: {
-          userId: updatedDocument.userId, // ผู้ส่งเอกสาร (Buyer)
+          userId: updatedDocument.userId,
           Title: "เอกสารของคุณได้รับการอนุมัติแล้ว",
           Message: `เอกสาร "${updatedDocument.DocumentName}" สำหรับโพสต์ของคุณได้รับการอนุมัติ`,
           Status: "UNREAD",
@@ -93,15 +101,17 @@ exports.approveDocument = async (req, res) => {
       try {
         await cloudinary.uploader.destroy(cloudinaryPublicId);
       } catch (e) {
+        // ไม่ให้ล้มเพราะลบไฟล์ไม่สำเร็จ — log ไว้พอ
         console.warn("Cloudinary destroy failed:", e.message);
       }
     }
 
     await prisma.documentUpload.delete({ where: { id: documentId } });
 
+    // แจ้งเตือนผู้ส่งเอกสาร (ถูกปฏิเสธ)
     await prisma.notification.create({
       data: {
-        userId: buyerId, // << แก้จาก uploaderUserId → buyerId
+        userId: buyerId,
         Title: "เอกสารของคุณถูกปฏิเสธ",
         Message: `เอกสาร "${docName}" ที่คุณส่งมาถูกปฏิเสธและลบออกจากระบบแล้ว`,
         Status: "UNREAD",
@@ -114,7 +124,7 @@ exports.approveDocument = async (req, res) => {
       message: "Document REJECTED and deleted successfully",
     });
   } catch (err) {
-    console.error(err);
+    console.error("approveDocument error:", err);
     return res.status(500).json({
       message: "Something went wrong",
       error: err.message,
@@ -123,7 +133,7 @@ exports.approveDocument = async (req, res) => {
 };
 
 // ========== ดึงเอกสารของฉัน ==========
-exports.getDocument = async (req, res) => {
+export const getDocument = async (req, res) => {
   try {
     const sessionUserId = getSessionUserId(req);
     if (!sessionUserId) {
@@ -137,19 +147,20 @@ exports.getDocument = async (req, res) => {
         DocumentName: true,
         Review_Status: true,
         DocumentUrl: true,
+        createdAt: true,
       },
       orderBy: { createdAt: "desc" },
     });
 
     return res.json(docs);
   } catch (err) {
-    console.error(err);
+    console.error("getDocument error:", err);
     return res.status(500).json({ message: "Server Error" });
   }
 };
 
 // ========== ตัวช่วยค้นหา ==========
-const handlequeryDoc = async (req, res, query) => {
+const handleQueryDoc = async (req, res, query) => {
   try {
     const validStatuses = ["PENDING", "APPROVED", "REJECTED"];
 
@@ -178,33 +189,34 @@ const handlequeryDoc = async (req, res, query) => {
         DocumentName: true,
         Review_Status: true,
         DocumentUrl: true,
+        createdAt: true,
       },
       orderBy: { createdAt: "desc" },
     });
 
     return res.json({ doc });
   } catch (err) {
-    console.error(err);
+    console.error("handleQueryDoc error:", err);
     return res.status(500).json({ message: "Server Error" });
   }
 };
 
 // ========== ค้นหาเอกสาร ==========
-exports.searchDocument = async (req, res) => {
+export const searchDocument = async (req, res) => {
   try {
     const sessionUserId = getSessionUserId(req);
     if (!sessionUserId) {
       return res.status(401).json({ message: "Unauthorized. Please log in." });
     }
 
-    const { q } = req.body || {};
+    // ROUTE ใช้ GET -> รับจาก query
+    const q = req.query?.q;
     if (q) {
-      // ส่งต่อไป helper และ return เพื่อกันส่ง response ซ้ำ
-      return handlequeryDoc(req, res, q);
+      return handleQueryDoc(req, res, q); // ส่งต่อ & return เพื่อกัน response ซ้ำ
     }
     return res.json([]);
   } catch (err) {
-    console.error(err);
+    console.error("searchDocument error:", err);
     return res.status(500).json({ message: "Server Error" });
   }
 };

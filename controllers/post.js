@@ -1,4 +1,4 @@
-// controllers/post.js
+// controllers/post.js (fixed)
 import prisma from "../config/prisma.js";
 import cloudinary from "../utils/cloudinary.js";
 import {
@@ -13,11 +13,12 @@ import {
 const ALLOWED_LANDMARKS = ["BTS_MRT", "School", "Hospital", "Mall_Market", "Park"];
 const ALLOWED_AMENITIES = ["Swimming_Pool", "Fitness_Center", "Co_working_Space", "Pet_Friendly"];
 
-// =============== CREATE ==============แก้ไข โดยให้ส้ราง deposit ไปด้วยเลย
+// =============== CREATE (สร้าง Deposit ใน transaction เดียวกัน + รองรับ propertyUnits) ===============
 export const createpost = async (req, res) => {
-
   try {
     console.log("Data received from body:", req.body);
+
+    // auth
     if (!req.session.user) {
       return res.status(401).json({ message: "Unauthorized, please login first" });
     }
@@ -25,7 +26,7 @@ export const createpost = async (req, res) => {
     const { userId, userType, sellerId } = req.session.user || {};
     console.log("Id Seller (from session):", sellerId);
 
-    // 🔧 Fallback: ถ้าเป็น Seller แต่ session ยังไม่มี sellerId ให้ดึงจาก DB
+    // Fallback: ถ้าเป็น Seller แต่ session ยังไม่มี sellerId → ดึงจาก DB
     let effectiveSellerId = sellerId;
     if (userType === "Seller" && !effectiveSellerId) {
       const seller = await prisma.seller.findFirst({
@@ -35,7 +36,7 @@ export const createpost = async (req, res) => {
       if (seller) effectiveSellerId = seller.id;
     }
 
-    // ✅ อนุญาตเฉพาะ Seller ที่มี sellerId ใช้งานจริง
+    // อนุญาตเฉพาะ Seller ที่มี sellerId ใช้งานจริง
     if (userType !== "Seller" || !effectiveSellerId) {
       return res.status(403).json({ message: "Forbidden: Only sellers can create posts." });
     }
@@ -67,47 +68,38 @@ export const createpost = async (req, res) => {
       Name,
       Phone,
       Bathroom,
-      Propertytype,
+      // Propertytype,   // ❌ ไม่มีในสคีมา — เอาออก
       Other_related_expenses,
       categoryId,
       Interest,
       floor,
-      propertyUnits
-
+      propertyUnits, // << รองรับหลายยูนิต
     } = req.body;
 
-
-
-    // เช็คมัดจำ
+    // ตรวจมัดจำ
     if (!Deposit_Amount || Number(Deposit_Amount) <= 0) {
       return res.status(400).json({ message: "This post requires a valid deposit amount." });
     }
 
-    // ไฟล์จาก multer
+    // ไฟล์จาก multer (รองรับ .fields() / .array())
     const imageFiles = filesOf(req.files, "images");
     const videoFiles = filesOf(req.files, "videos");
 
-
-    let parsedPropertyUnits = []; // 1. สร้างตัวแปรใหม่เป็น Array ว่างรอไว้
-
-    // 2. ตรวจสอบว่า propertyUnits ที่รับมาเป็น String หรือไม่
-    if (typeof propertyUnits === 'string' && propertyUnits.length > 0) {
+    // แปลง propertyUnits (stringified JSON หรือ array)
+    let parsedPropertyUnits = [];
+    if (typeof propertyUnits === "string" && propertyUnits.length > 0) {
       try {
-        // 3. ถ้าใช่ ให้แปลง String กลับเป็น Array/Object ด้วย JSON.parse()
         parsedPropertyUnits = JSON.parse(propertyUnits);
-      } catch (e) {
-        // ถ้าแปลงไม่สำเร็จ แสดงว่าข้อมูลที่ส่งมาผิดรูปแบบ
+      } catch {
         return res.status(400).json({ message: "Invalid format for propertyUnits." });
       }
     } else if (Array.isArray(propertyUnits)) {
-      // ถ้าส่งมาเป็น Array อยู่แล้ว ก็ใช้ได้เลย
       parsedPropertyUnits = propertyUnits;
     }
 
-
     const newPostWithDeposit = await prisma.$transaction(
       async (tx) => {
-        // ใช้ tx ตั้งแต่สร้างโพสต์
+        // สร้างโพสต์ + ความสัมพันธ์ + สื่อ
         const newPost = await tx.propertyPost.create({
           data: {
             Property_Name,
@@ -115,7 +107,7 @@ export const createpost = async (req, res) => {
             District,
             Subdistrict,
             Address,
-            Propertytype,
+            // Propertytype, // ❌ เอาออก
             Description,
             Usable_Area: toFloatOrNull(Usable_Area),
             Land_Size: toFloatOrNull(Land_Size),
@@ -143,10 +135,24 @@ export const createpost = async (req, res) => {
             Interest: toFloatOrNull(Interest),
             floor: toIntOrNull(floor),
 
+            // จำนวนยูนิต/สร้าง PropertyUnit เมื่อมีส่งมา
+            NumberOfUnits:
+              parsedPropertyUnits && parsedPropertyUnits.length > 0
+                ? parsedPropertyUnits.length
+                : 1,
+            ...(parsedPropertyUnits &&
+              parsedPropertyUnits.length > 0 && {
+                PropertyUnit: {
+                  create: parsedPropertyUnits.map((unit) => ({
+                    Unit_Number: unit.Unit_Number,
+                  })),
+                },
+              }),
+
             ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
 
             user:   { connect: { id: userId } },
-            Seller: { connect: { id: effectiveSellerId } },
+            seller: { connect: { id: effectiveSellerId } }, // ✅ ใช้ตัวเล็กให้ตรงสคีมา
 
             Image: {
               create: imageFiles.map((file) => ({
@@ -168,7 +174,7 @@ export const createpost = async (req, res) => {
           include: { Image: true, Video: true },
         });
 
-        // สร้างมัดจำให้โพสต์นี้ใน transaction เดียวกัน
+        // สร้าง Deposit ใน transaction เดียวกัน
         await tx.deposit.create({
           data: {
             postId: newPost.id,
@@ -182,17 +188,16 @@ export const createpost = async (req, res) => {
       { timeout: 10000 }
     );
 
-    res.status(201).json(newPostWithDeposit);
+    return res.status(201).json(newPostWithDeposit);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server Error" });
+    return res.status(500).json({ message: "Server Error" });
   }
 };
 
 // =============== LIST (ยังไม่ใช้) ===============
 export const list = async (req, res) => {
   try {
-    // TODO
     res.json([]);
   } catch (err) {
     res.status(500).json({ message: "Server Error" });
@@ -228,9 +233,9 @@ const handleQuery = async (req, res, query) => {
       where: {
         OR: [
           { Property_Name: { contains: query, mode: "insensitive" } },
-          { Year_Built: { contains: query, mode: "insensitive" } },
-          { Description: { contains: query, mode: "insensitive" } },
-          { Address: { contains: query, mode: "insensitive" } },
+          { Year_Built:     { contains: query, mode: "insensitive" } },
+          { Description:    { contains: query, mode: "insensitive" } },
+          { Address:        { contains: query, mode: "insensitive" } },
         ],
       },
       include: { Category: true, Image: true },
@@ -292,7 +297,7 @@ export const getPost = async (req, res) => {
     const post = await prisma.propertyPost.findUnique({
       where: { id },
       select: {
-        floor: true, // ✅ จำนวนชั้น
+        floor: true,
         Property_Name: true,
         Province: true,
         Deposit: true,
@@ -323,12 +328,7 @@ export const getPost = async (req, res) => {
         Longitude: true,
         Other_related_expenses: true,
         Status_post: true,
-        Video: {
-          select: {
-            url: true,
-            secure_url: true
-          }
-        }
+        Video: { select: { url: true, secure_url: true } },
       },
     });
 
@@ -339,7 +339,7 @@ export const getPost = async (req, res) => {
   }
 };
 
-// =============== REMOVE (ADMIN) ===============
+// =============== REMOVE (ADMIN/OWNER) ===============
 export const removepost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -350,7 +350,7 @@ export const removepost = async (req, res) => {
     const images = await prisma.image.findMany({ where: { propertyPostId: id } });
     const videos = await prisma.video.findMany({ where: { postId: id } });
 
-    // ลบไฟล์บน Cloudinary (ถ้ามี public_id)
+    // ลบไฟล์ Cloudinary (ถ้ามี public_id)
     const deleteImagePromises = images.map((img) =>
       img.public_id ? cloudinary.uploader.destroy(img.public_id) : null
     );
@@ -359,7 +359,7 @@ export const removepost = async (req, res) => {
     );
     await Promise.all([...deleteImagePromises, ...deleteVideoPromises]);
 
-    // ลบความสัมพันธ์/ตารางที่เกี่ยวข้อง
+    // ลบตารางที่เกี่ยวข้อง
     await prisma.deposit.deleteMany({ where: { postId: id } });
     await prisma.image.deleteMany({ where: { propertyPostId: id } });
     await prisma.video.deleteMany({ where: { postId: id } });
@@ -381,9 +381,9 @@ export const removepost = async (req, res) => {
 // =============== UPDATE (รองรับอัปเดตรูป & วิดีโอ) ===============
 export const updatePost = async (req, res) => {
   try {
-    const { id } = req.params; // ID ของโพสต์ที่ต้องการอัปเดต
+    const { id } = req.params;
 
-    // 🔥 1. ตรวจสอบ Session และดึง sellerId
+    // ตรวจ session + สิทธิ์
     if (!req.session.user || !req.session.user.sellerId) {
       return res.status(401).json({ message: "Unauthorized or not a seller" });
     }
@@ -398,18 +398,19 @@ export const updatePost = async (req, res) => {
       return res.status(404).json({ message: "Post not found" });
     }
 
-    // 🔥 2. ตรวจสอบความเป็นเจ้าของ
+    // ตรวจ owner
     if (existingPost.sellerId !== sellerId) {
       return res.status(403).json({ message: "Forbidden: You are not the owner of this post" });
     }
 
-    // ฟิลด์ที่อนุญาตให้อัปเดต
+    // ฟิลด์ที่อนุญาตให้อัปเดต (ตัด Propertytype ออก)
     const allowedFields = [
       "Property_Name", "Price", "Usable_Area", "Land_Size", "Bedrooms", "Description",
       "Deposit_Amount", "Contract_Seller", "LinkMap", "Latitude", "Longitude",
       "Province", "District", "Subdistrict", "Address", "Total_Rooms", "Year_Built",
       "Nearby_Landmarks", "Additional_Amenities", "Parking_Space", "Sell_Rent",
-      "Link_line", "Link_facbook", "Name", "Phone", "Bathroom", "Propertytype",
+      "Link_line", "Link_facbook", "Name", "Phone", "Bathroom",
+      // "Propertytype", // ❌ ไม่มีในสคีมา
       "Other_related_expenses", "categoryId", "Interest", "floor",
     ];
 
@@ -424,10 +425,9 @@ export const updatePost = async (req, res) => {
       if (v === "" || v === null) {
         if (k === "Nearby_Landmarks" || k === "Additional_Amenities") {
           dataToUpdate[k] = { set: [] };
-        } else if (k === "categoryId") { // 🔥 3. เพิ่มเงื่อนไขเคลียร์ค่า Category
+        } else if (k === "categoryId") {
           dataToUpdate["Category"] = { disconnect: true };
-        }
-        else {
+        } else {
           dataToUpdate[k] = null;
         }
         return;
@@ -445,7 +445,6 @@ export const updatePost = async (req, res) => {
         return;
       }
 
-      // 🔥 4. เพิ่มเงื่อนไขสำหรับอัปเดต Category
       if (k === "categoryId") {
         dataToUpdate["Category"] = { connect: { id: v } };
         return;
