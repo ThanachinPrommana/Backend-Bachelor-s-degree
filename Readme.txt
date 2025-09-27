@@ -47,6 +47,9 @@ npm install nodemailer
 //
 Download stripe ระบบ payment auto
 npm install stripe
+//
+Download adminJs connect with express and prisma
+npm install adminjs @adminjs/express @adminjs/prisma express-formidable
 
 ------------Client--------------
 npm create vite@latest

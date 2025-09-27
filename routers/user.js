@@ -1,52 +1,52 @@
-// routes/user.js
-const express = require("express");
+import express from "express";
+import upload from "../Middlewares/upload.js";
+import uploadDocument from "../Middlewares/document.js";
+import { isAuthenticated, isSeller } from "../Middlewares/authCheck.js";
+import { handleStripeWebhook } from "../controllers/payment.js";
+
 const router = express.Router();
 
-const {
+import {
   // Admin / Management
-  updateStatusSeller,   // PATCH /seller/:sellerId/status
-  deleteUser,           // DELETE /user/:id
+  updateStatusSeller,
+  deleteUser,
 
   // Lists / Search
-  listUserSeller,       // GET /userSeller
-  listUserBuyer,        // GET /userBuyer
-  searchFiltersSeller,  // GET /search/post/seller?q=...
+  listUserSeller,
+  listUserBuyer,
+  searchFiltersSeller,
 
   // Profiles (read)
-  getUserProfile,       // GET /profile/:id            (อ่านโปรไฟล์ Buyer ตาม id) - ยังใช้ภายนอก
-  getSellerProfile,     // GET /profileseller/:id      (อ่านโปรไฟล์ Seller ตาม id) - ยังไม่ใช้
+  getUserProfile,
+  getSellerProfile,
 
   // Profiles (self update)
-  updateUser,           // PATCH /profile              (อัปเดต User + Buyer บางส่วน เมื่อเป็นผู้ซื้อ)
-  updateSeller,         // PATCH /profileseller        (อัปเดต User + Buyer + Seller พร้อมกัน)
-  updateimage,          // POST  /image                (อัปโหลด/อัปเดตรูปโปรไฟล์)
+  updateUser,
+  updateSeller,
+  updateimage,
 
   // Seller posts management (self)
-  getpostBySeller,      // GET /post/seller
-  deletePostBySeller,   // DELETE /seller/remove/post/:postId
+  getpostBySeller,
+  deletePostBySeller,
 
   // Deposits
-  createdeposite,       // POST   /user/create/deposit
-  getdeposits,          // GET    /deposit            (ของผู้ใช้ที่ล็อกอิน ตาม session)
-  updateDepositStatus,  // PATCH  /update/status/deposit/:depositId
+  createdeposite,
+  getdeposits,
+  updateDepositStatus,
 
   // Documents
-  useruploadDocument,   // POST /document
+  useruploadDocument,
 
   createBooking,
 
   createDateTimeSlot,
   removeTimeSlot,
   removeBooking,
-} = require("../controllers/user");
-const {
-  createStripePaymentIntent
-} = require("../controllers/payment")
+  uploadFinalSlip,
+  confirmedSlipBySeller
+} from "../controllers/user.js";
 
-const upload = require("../Middlewares/upload");
-const uploadDocument = require("../Middlewares/document");
-const { isAuthenticated, isSeller } = require("../Middlewares/authCheck");
-const { handleStripeWebhook } = require("../controllers/payment");
+import { createStripePaymentIntent } from "../controllers/payment.js";
 
 // -------------------------------------------------------------
 // Admin / Management (ควรมี adminOnly เพิ่มเติม ถ้ามี middleware)
@@ -121,9 +121,14 @@ router.post("/user/booking", isAuthenticated, createBooking);
 router.delete("/user/remove/:bookingId", isAuthenticated, removeBooking)
 // Payment
 router.post("/create/payment", isAuthenticated, createStripePaymentIntent)
-// router.post(
-//   "/stripe/webhook",
-//   express.raw({ type: "application/json" }),
-//   handleStripeWebhook
-// );
-module.exports = router;
+// Final UploadSlip
+router.post(
+  '/upload-final-slip/:bookingId',
+  isAuthenticated,             // 1. Middleware: ตรวจสอบก่อนว่าผู้ใช้ login แล้วหรือยัง
+  upload.single('finalSlip'),  // 2. Middleware: รับไฟล์จาก form-data ที่มีชื่อ field ว่า 'finalSlip' แล้วส่งไป Cloudinary
+  uploadFinalSlip              // 3. Controller: เมื่อ Middleware ทั้งสองทำงานเสร็จ จะเรียกใช้ฟังก์ชันนี้ต่อ
+);
+//confirmedSlipBySeller
+router.post("/confirmed-slip/:bookingId", isAuthenticated, confirmedSlipBySeller)
+
+export default router;

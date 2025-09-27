@@ -1,23 +1,23 @@
 // controllers/post.js
-const Video = require("twilio/lib/rest/Video");
-const prisma = require("../config/prisma");
-const cloudinary = require("../utils/cloudinary");
-const {
+import prisma from "../config/prisma.js";
+import cloudinary from "../utils/cloudinary.js";
+import {
   toIntOrNull,
   toFloatOrNull,
   toEnumArray,
   filesOf,
-  connectIf,
-} = require("../utils/parse");
-const { response } = require("express");
+  connectIf
+} from "../utils/parse.js";
 
 // อนุญาตตาม enum ใน schema.prisma
 const ALLOWED_LANDMARKS = ["BTS_MRT", "School", "Hospital", "Mall_Market", "Park"];
 const ALLOWED_AMENITIES = ["Swimming_Pool", "Fitness_Center", "Co_working_Space", "Pet_Friendly"];
 
 // =============== CREATE ==============แก้ไข โดยให้ส้ราง deposit ไปด้วยเลย
-exports.createpost = async (req, res) => {
+export const createpost = async (req, res) => {
+
   try {
+    console.log("Data received from body:", req.body);
     if (!req.session.user) {
       return res.status(401).json({ message: "Unauthorized, please login first" });
     }
@@ -72,8 +72,11 @@ exports.createpost = async (req, res) => {
       categoryId,
       Interest,
       floor,
+      propertyUnits
 
     } = req.body;
+
+
 
     // เช็คมัดจำ
     if (!Deposit_Amount || Number(Deposit_Amount) <= 0) {
@@ -83,6 +86,24 @@ exports.createpost = async (req, res) => {
     // ไฟล์จาก multer
     const imageFiles = filesOf(req.files, "images");
     const videoFiles = filesOf(req.files, "videos");
+
+
+    let parsedPropertyUnits = []; // 1. สร้างตัวแปรใหม่เป็น Array ว่างรอไว้
+
+    // 2. ตรวจสอบว่า propertyUnits ที่รับมาเป็น String หรือไม่
+    if (typeof propertyUnits === 'string' && propertyUnits.length > 0) {
+      try {
+        // 3. ถ้าใช่ ให้แปลง String กลับเป็น Array/Object ด้วย JSON.parse()
+        parsedPropertyUnits = JSON.parse(propertyUnits);
+      } catch (e) {
+        // ถ้าแปลงไม่สำเร็จ แสดงว่าข้อมูลที่ส่งมาผิดรูปแบบ
+        return res.status(400).json({ message: "Invalid format for propertyUnits." });
+      }
+    } else if (Array.isArray(propertyUnits)) {
+      // ถ้าส่งมาเป็น Array อยู่แล้ว ก็ใช้ได้เลย
+      parsedPropertyUnits = propertyUnits;
+    }
+
 
     const newPostWithDeposit = await prisma.$transaction(
       async (tx) => {
@@ -169,7 +190,7 @@ exports.createpost = async (req, res) => {
 };
 
 // =============== LIST (ยังไม่ใช้) ===============
-exports.list = async (req, res) => {
+export const list = async (req, res) => {
   try {
     // TODO
     res.json([]);
@@ -178,7 +199,7 @@ exports.list = async (req, res) => {
   }
 };
 
-exports.handlePrice = async (req, res, price) => {
+export const handlePrice = async (req, res, price) => {
   // TODO
 };
 
@@ -196,7 +217,7 @@ const handlecategory = async (req, res, categoryId) => {
   }
 };
 
-exports.handleSellerRent = async (req, res) => {
+export const handleSellerRent = async (req, res) => {
   // TODO
 };
 
@@ -221,7 +242,7 @@ const handleQuery = async (req, res, query) => {
   }
 };
 
-exports.searchFilters = async (req, res) => {
+export const searchFilters = async (req, res) => {
   try {
     const { query, categoryId } = req.body;
     if (query) {
@@ -242,7 +263,7 @@ exports.searchFilters = async (req, res) => {
 };
 
 // =============== GET BY CATEGORY ===============
-exports.getbycategory = async (req, res) => {
+export const getbycategory = async (req, res) => {
   try {
     const { categoryId } = req.params;
     console.log("ID:", categoryId);
@@ -264,7 +285,7 @@ exports.getbycategory = async (req, res) => {
 };
 
 // =============== GET SINGLE POST ===============
-exports.getPost = async (req, res) => {
+export const getPost = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -319,7 +340,7 @@ exports.getPost = async (req, res) => {
 };
 
 // =============== REMOVE (ADMIN) ===============
-exports.removepost = async (req, res) => {
+export const removepost = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -358,16 +379,29 @@ exports.removepost = async (req, res) => {
 };
 
 // =============== UPDATE (รองรับอัปเดตรูป & วิดีโอ) ===============
-exports.updatePost = async (req, res) => {
+export const updatePost = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params; // ID ของโพสต์ที่ต้องการอัปเดต
+
+    // 🔥 1. ตรวจสอบ Session และดึง sellerId
+    if (!req.session.user || !req.session.user.sellerId) {
+      return res.status(401).json({ message: "Unauthorized or not a seller" });
+    }
+    const { sellerId } = req.session.user;
 
     if (!req.body || typeof req.body !== "object") {
       return res.status(400).json({ message: "Invalid or missing request body" });
     }
 
     const existingPost = await prisma.propertyPost.findUnique({ where: { id } });
-    if (!existingPost) return res.status(404).json({ message: "Post not found" });
+    if (!existingPost) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    // 🔥 2. ตรวจสอบความเป็นเจ้าของ
+    if (existingPost.sellerId !== sellerId) {
+      return res.status(403).json({ message: "Forbidden: You are not the owner of this post" });
+    }
 
     // ฟิลด์ที่อนุญาตให้อัปเดต
     const allowedFields = [
@@ -384,13 +418,16 @@ exports.updatePost = async (req, res) => {
 
     const dataToUpdate = {};
     Object.entries(req.body).forEach(([k, v]) => {
-      if (!allowedFields.includes(k)) return;   // ข้ามฟิลด์ที่ไม่อนุญาต
-      if (v === undefined) return;              // ไม่ส่งมา → ไม่แตะ
+      if (!allowedFields.includes(k)) return;
+      if (v === undefined) return;
 
-      if (v === "" || v === null) {            // เคลียร์ค่า
+      if (v === "" || v === null) {
         if (k === "Nearby_Landmarks" || k === "Additional_Amenities") {
           dataToUpdate[k] = { set: [] };
-        } else {
+        } else if (k === "categoryId") { // 🔥 3. เพิ่มเงื่อนไขเคลียร์ค่า Category
+          dataToUpdate["Category"] = { disconnect: true };
+        }
+        else {
           dataToUpdate[k] = null;
         }
         return;
@@ -408,7 +445,13 @@ exports.updatePost = async (req, res) => {
         return;
       }
 
-      dataToUpdate[k] = v; // string/enum เดี่ยว ๆ
+      // 🔥 4. เพิ่มเงื่อนไขสำหรับอัปเดต Category
+      if (k === "categoryId") {
+        dataToUpdate["Category"] = { connect: { id: v } };
+        return;
+      }
+
+      dataToUpdate[k] = v;
     });
 
     const updatedPost = await prisma.propertyPost.update({
@@ -417,11 +460,9 @@ exports.updatePost = async (req, res) => {
     });
 
     // ====== อัปเดตสื่อ (รูป/วิดีโอ) เฉพาะเมื่อส่งไฟล์มาใหม่ ======
-    // รูปภาพ
     const newImages = filesOf(req.files, "images");
     let imageResult = null;
     if (newImages.length > 0) {
-      // ลบของเก่าทั้ง Cloudinary + DB
       const oldImages = await prisma.image.findMany({ where: { propertyPostId: id } });
       await Promise.all(
         oldImages.map((img) =>
@@ -430,7 +471,6 @@ exports.updatePost = async (req, res) => {
       );
       await prisma.image.deleteMany({ where: { propertyPostId: id } });
 
-      // ใส่ของใหม่
       imageResult = await prisma.image.createMany({
         data: newImages.map((file) => ({
           url: file.path || file.url,
@@ -442,11 +482,9 @@ exports.updatePost = async (req, res) => {
       });
     }
 
-    // วิดีโอ
     const newVideos = filesOf(req.files, "videos");
     let videoResult = null;
     if (newVideos.length > 0) {
-      // ลบของเก่าทั้ง Cloudinary + DB
       const oldVideos = await prisma.video.findMany({ where: { postId: id } });
       await Promise.all(
         oldVideos.map((v) =>
@@ -455,7 +493,6 @@ exports.updatePost = async (req, res) => {
       );
       await prisma.video.deleteMany({ where: { postId: id } });
 
-      // ใส่ของใหม่
       videoResult = await prisma.video.createMany({
         data: newVideos.map((file) => ({
           url: file.path || file.url,
@@ -480,7 +517,7 @@ exports.updatePost = async (req, res) => {
 };
 
 // =============== CATEGORIES ===============
-exports.getallcategory = async (req, res) => {
+export const getallcategory = async (req, res) => {
   try {
     const categories = await prisma.category.findMany();
     res.status(200).json(categories);

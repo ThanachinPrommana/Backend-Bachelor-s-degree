@@ -1,25 +1,28 @@
-console.log("My Stripe Secret Key is:", process.env.STRIPE_SECRET_KEY);
-const prisma = require("../config/prisma")
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+// console.log("My Stripe Secret Key is:", process.env.STRIPE_SECRET_KEY);
+import prisma from "../config/prisma.js";
+import Stripe from 'stripe';
 
-exports.createStripePaymentIntent = async (req, res) => {
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
+export const createStripePaymentIntent = async (req, res) => {
     try {
         const user = req.session.user; // หรือ req.user จาก authMiddleware
         const buyerId = user.userId;
-        const { postId } = req.body;
+        const { postId, unitId } = req.body;
 
-        if (!postId) {
+        if (!postId || !unitId) {
             return res.status(400).json({ message: "Bad Request: ไม่พบ postId" });
         }
 
         const document = await prisma.documentUpload.findFirst({
             where: {
                 userId: buyerId,
-                postId: postId
+                postId: postId,
+                unitId: unitId
             }
         })
 
-        console.log("ID:", document)
+        // console.log("ID:", document)
 
         if (!document || document.Review_Status !== "APPROVED") {
             return res.status(403).json({
@@ -38,10 +41,14 @@ exports.createStripePaymentIntent = async (req, res) => {
 
         // if (deposit.Post.userId === buyerId) {
         //     return res.status(403).json({ message: "Forbidden: คุณไม่สามารถมัดจำประกาศของตัวเองได้" });
-        // }
+        // }s
+        // ตรวจสอบสถานะของยูนิตโดยตรง (สำคัญมาก)
+        const unit = await prisma.propertyUnit.findUnique({
+            where: { id: unitId }
+        });
 
-        if (deposit.Deposit_Status !== 'PENDING') {
-            return res.status(409).json({ message: "Conflict: ประกาศนี้ไม่ว่างสำหรับการมัดจำ" });
+        if (!unit || unit.Status !== 'PENDING') { // สถานะของยูนิตควรเป็น PENDING จากขั้นตอนการอัปโหลดเอกสาร
+            return res.status(409).json({ message: `Conflict: ยูนิตนี้ไม่ว่างสำหรับการมัดจำ (สถานะปัจจุบัน: ${unit?.Status})` });
         }
 
         const amountInSatang = Math.round(deposit.Deposit_Amount * 100);
@@ -56,7 +63,8 @@ exports.createStripePaymentIntent = async (req, res) => {
             metadata: {
                 depositId: deposit.id,
                 postId: deposit.postId,
-                buyerId: buyerId
+                buyerId: buyerId,
+                unitId: unitId
             }
         });
 
@@ -70,9 +78,9 @@ exports.createStripePaymentIntent = async (req, res) => {
     }
 };
 
-exports.handleStripeWebhook = async (req, res) => {
+export const handleStripeWebhook = async (req, res) => {
 
-    console.log('1. ได้รับ Webhook แล้ว');
+    // console.log('1. ได้รับ Webhook แล้ว');
 
     const sig = req.headers['stripe-signature'];
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -81,14 +89,14 @@ exports.handleStripeWebhook = async (req, res) => {
     try {
         event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
 
-        console.log('2. ตรวจสอบลายเซ็นสำเร็จ');
+        // console.log('2. ตรวจสอบลายเซ็นสำเร็จ');
     } catch (err) {
         console.log(`❌ Webhook signature verification failed.`, err.message);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
     if (event.type === 'payment_intent.succeeded') {
-        console.log('3. Event คือ payment_intent.succeeded');
+        // console.log('3. Event คือ payment_intent.succeeded');
 
         const paymentIntent = event.data.object;
         const { depositId, postId, buyerId } = paymentIntent.metadata;
@@ -102,11 +110,11 @@ exports.handleStripeWebhook = async (req, res) => {
         try {
             // ⭐️ปรับปรุง: เพิ่ม Idempotency Check
             // ตรวจสอบสถานะของ deposit ก่อนเริ่ม transaction
-            console.log('4. กำลังจะเริ่มตรวจสอบฐานข้อมูล...');
+            // console.log('4. กำลังจะเริ่มตรวจสอบฐานข้อมูล...');
             const existingDeposit = await prisma.deposit.findUnique({
                 where: { id: depositId },
             });
-            console.log('5. ค้นหา deposit ที่มีอยู่:', existingDeposit); // ⭐️ เพิ่มบรรทัดนี้
+            // console.log('5. ค้นหา deposit ที่มีอยู่:', existingDeposit); // ⭐️ เพิ่มบรรทัดนี้
 
             // ถ้าไม่เจอ deposit หรือสถานะไม่ใช่ AVAILABLE ให้หยุดทำงาน
             if (!existingDeposit || existingDeposit.Deposit_Status !== 'PENDING') {
@@ -118,7 +126,7 @@ exports.handleStripeWebhook = async (req, res) => {
             // ถ้า deposit ยัง AVAILABLE อยู่ ก็เริ่มทำ Transaction
             await prisma.$transaction(async (tx) => {
                 // อัปเดตตาราง Deposit
-                console.log('6. เริ่ม Transaction...');
+                // console.log('6. เริ่ม Transaction...');
                 await tx.deposit.update({
                     where: { id: depositId },
                     data: {
@@ -138,7 +146,7 @@ exports.handleStripeWebhook = async (req, res) => {
                         Status: 'CONFIRMED',
                     },
                 });
-                console.log('7. Transaction เสร็จสิ้น');
+                // console.log('7. Transaction เสร็จสิ้น');
             });
 
             console.log(`✅ Database updated successfully for depositId: ${depositId}`);

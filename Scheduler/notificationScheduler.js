@@ -121,7 +121,11 @@ async function checkAndSendAtTimeAlerts() {
         isAtTimeAlertSent: false,
         dateTimeSlot: { startTime: { gte: oneMinuteAgo, lte: now } },
       },
-      include: { Buyer: { include: { user: true } }, Seller: { include: { user: true } }, dateTimeSlot: true },
+      include: {
+        Buyer: { include: { user: true } },
+        Seller: { include: { user: true } },
+        dateTimeSlot: true
+      },
     });
 
     if (dueBookings.length === 0) return;

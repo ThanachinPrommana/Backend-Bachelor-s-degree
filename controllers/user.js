@@ -1,7 +1,8 @@
-const prisma = require("../config/prisma");
-const { Status_Seller, UserType, Status_Disposit } = require("@prisma/client");
-const cloudinary = require("../utils/cloudinary");
-const { IncomingClientScope } = require("twilio/lib/jwt/ClientCapability");
+import prisma from "../config/prisma.js";
+import { Status_Seller, UserType, Status_Disposit } from "@prisma/client";
+import cloudinary from "../utils/cloudinary.js";
+
+
 const getCloudinaryResourceDetails = async (publicId) => {
   try {
     const resource = await cloudinary.api.resource(publicId);
@@ -12,7 +13,7 @@ const getCloudinaryResourceDetails = async (publicId) => {
   }
 };
 // admin
-exports.updateStatusSeller = async (req, res) => {
+export const updateStatusSeller = async (req, res) => {
   try {
     const { Status } = req.body;
     const { sellerId } = req.params; // ← ใช้ชื่อใหม่ตาม router
@@ -45,7 +46,7 @@ exports.updateStatusSeller = async (req, res) => {
 };
 
 //admin
-exports.deleteUser = async (req, res) => {
+export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params
     const user = await prisma.user.findUnique({
@@ -70,7 +71,7 @@ exports.deleteUser = async (req, res) => {
   }
 }
 //admin
-exports.listUserSeller = async (req, res) => {
+export const listUserSeller = async (req, res) => {
   try {
 
     const listusers = await prisma.user.findMany({
@@ -98,7 +99,7 @@ exports.listUserSeller = async (req, res) => {
   }
 }
 //admin
-exports.listUserBuyer = async (req, res) => {
+export const listUserBuyer = async (req, res) => {
   try {
 
     const listusers = await prisma.user.findMany({
@@ -126,7 +127,7 @@ exports.listUserBuyer = async (req, res) => {
   }
 }
 //ไม่ใช้
-exports.getSellerProfile = async (req, res) => {
+export const getSellerProfile = async (req, res) => {
   try {
     const { id } = req.params
     const seller = await prisma.user.findUnique({
@@ -165,7 +166,7 @@ exports.getSellerProfile = async (req, res) => {
   }
 }
 //ไม่ใช้
-exports.getUserProfile = async (req, res) => {
+export const getUserProfile = async (req, res) => {
   try {
     const { id } = req.params
 
@@ -212,7 +213,7 @@ exports.getUserProfile = async (req, res) => {
   }
 }
 // complete (รวม User + Buyer + Seller)
-exports.updateSeller = async (req, res) => {
+export const updateSeller = async (req, res) => {
   try {
     const sessionUser = req.session.user;
     if (!sessionUser || !sessionUser.userId) {
@@ -369,7 +370,7 @@ exports.updateSeller = async (req, res) => {
 };
 
 // complete (อัปเดต User + Buyer ฝั่งผู้ซื้อ)
-exports.updateUser = async (req, res) => {
+export const updateUser = async (req, res) => {
   try {
     const sessionUser = req.session.user;
     if (!sessionUser || !sessionUser.userId) {
@@ -478,7 +479,7 @@ exports.updateUser = async (req, res) => {
 };
 
 //complete
-exports.updateimage = async (req, res) => {
+export const updateimage = async (req, res) => {
   try {
     // 🔥 --- ส่วนที่แก้ไข --- 🔥
     // 1. ตรวจสอบและดึง userId ที่ถูกต้องจาก session
@@ -573,7 +574,7 @@ exports.updateimage = async (req, res) => {
 //   }
 // }
 //complete
-exports.useruploadDocument = async (req, res) => {
+export const useruploadDocument = async (req, res) => {
   try {
     const loggedInUser = req.session.user
     if (!loggedInUser || !loggedInUser.userId) {
@@ -583,90 +584,87 @@ exports.useruploadDocument = async (req, res) => {
     }
     const userId = loggedInUser.userId; // <-- ใช้ userId ที่ถูกต้อง
 
-    const { typeId, DocumentName, postId } = req.body;
+    const { typeId, DocumentName, postId, unitId } = req.body;
     // const {id} = req.params
     const file = req.file;
     if (!file) {
       return res.status(400).json({ message: "No file upload" });
     }
+    if (!unitId) {
+      return res.status(400).json({ message: "A specific unit ID is required for this action." });
+    }
 
-    const existingDocument = await prisma.documentUpload.findFirst({
-      where: {
-        userId: userId,
-        postId: postId,
-        Review_Status: {
-          in: ["PENDING", "APPROVED"] // ตรวจสอบว่ามีเอกสารที่รออนุมัติ หรือ อนุมัติไปแล้วหรือไม่
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. ค้นหาและตรวจสอบสถานะของยูนิตที่ต้องการ
+      const unit = await tx.propertyUnit.findUnique({
+        where: { id: unitId },
+      });
+
+      // ตรวจสอบว่ายูนิตนั้นมีอยู่จริง และยังว่างอยู่หรือไม่
+      if (!unit || unit.Status !== "AVAILABLE") {
+        // ถ้าไม่ว่างแล้ว ให้ยกเลิก Transaction ทันที
+        throw new Error("This unit is no longer available.");
+      }
+
+      // 2. ถ้ายังว่างอยู่ ให้อัปเดตสถานะเป็น PENDING (กำลังดำเนินการ)
+      await tx.propertyUnit.update({
+        where: { id: unitId },
+        data: { Status: "PENDING" },
+      });
+
+      const documentUrl = file.secure_url || file.path || file.url;
+      const publicId = file.filename || file.public_id;
+
+      // 3. สร้างข้อมูลการอัปโหลดเอกสาร โดยเชื่อมกับ unitId
+      const document = await tx.documentUpload.create({
+        data: {
+          userId: userId,
+          typeId,
+          DocumentName,
+          DocumentUrl: documentUrl,
+          CloudinaryPublicId: publicId,
+          Review_Status: "PENDING",
+          postId,
+          unitId: unitId, // <-- เพิ่ม: บันทึก unitId ลงในเอกสาร
+        },
+      });
+
+      // 4. สร้าง Notification (เหมือนเดิม)
+      const post = await tx.propertyPost.findUnique({
+        where: { id: postId },
+        select: { userId: true },
+      });
+
+      if (!post) {
+        throw new Error("Post not found");
+      }
+
+      await tx.notification.create({
+        data: {
+          userId: post.userId,
+          Title: "มีเอกสารใหม่สำหรับตรวจสอบมัดจำ",
+          Message: `เอกสารมัดจำจาก: ${loggedInUser.First_name} ${loggedInUser.Last_name} สำหรับยูนิต #${unit.Unit_Number}`,
+          Status: "UNREAD",
+          relatedProcess: "DOCUMENT_UPLOAD",
+          referenceId: document.id,
+        },
+      });
+      await tx.notification.create({
+        data: {
+          userId: userId,
+          Title: "เอกสารถูกส่งไปยังผู้ขายแล้ว",
+          Message: `รอการอนุมัติสำหรับยูนิต #${unit.Unit_Number}`,
+          Status: "UNREAD",
+          relatedProcess: "DOCUMENT_UPLOAD",
+          referenceId: document.id,
         }
-      }
-    });
+      });
 
-    // ถ้าเจอเอกสารที่ยัง Active อยู่ ให้ส่ง Error กลับไป
-    if (existingDocument) {
-      const message = existingDocument.Review_Status === "PENDING"
-        ? "คุณมีเอกสารที่รอการตรวจสอบสำหรับโพสต์นี้อยู่แล้ว"
-        : "คุณมีเอกสารที่ได้รับการอนุมัติสำหรับโพสต์นี้แล้ว ไม่จำเป็นต้องส่งเอกสารเพิ่มเติม";
-
-      return res.status(409).json({ message }); // 409 Conflict
-    }
-
-    // console.log("Uploaded file info:", req.file);
-    // console.log("Document URL:", file.path);
-    // console.log("File resource_type:", file.resource_type);
-
-    const documentUrl = file.secure_url || file.path || file.url;
-    const publicId = file.filename || file.public_id;
-
-    // console.log("PublicId:",publicId)
-    // console.log("URL:", documentUrl)
-
-    // const ext = file.mimetype.split("/")[1].toLowerCase();
-    // const resourceType = ["pdf", "doc", "docx"].includes(ext) ? "raw" : "image";
-    // console.log("Resource Type:", resourceType);
-
-    const document = await prisma.documentUpload.create({
-      data: {
-        userId: userId,
-        typeId,
-        DocumentName,
-        DocumentUrl: documentUrl,
-        CloudinaryPublicId: publicId,
-        Review_Status: "PENDING",
-        postId,
-      },
-    });
-
-    const post = await prisma.propertyPost.findUnique({
-      where: { id: postId },
-      select: { userId: true },
-    });
-
-    if (!post) {
-      return res.status(404).json({ message: "Post not found" });
-    }
-
-    await prisma.notification.create({
-      data: {
-        userId: post.userId,
-        Title: "มีเอกสารใหม่สำหรับตรวจสอบมัดจำ",
-        Message: `เอกสารมัดจำจาก:${loggedInUser.First_name} ${loggedInUser.Last_name}`,
-        Status: "UNREAD",
-        relatedProcess: "DOCUMENT_UPLOAD",
-        referenceId: document.id,
-      },
-    });
-    await prisma.notification.create({
-      data: {
-        userId: userId,
-        Title: "เอกสารถูกส่งไปยังผู้ขาย",
-        Message: "รออนุมัติ",
-        Status: "UNREAD",
-        relatedProcess: "DOCUMENT_UPLOAD",
-        referenceId: document.id,
-      }
-    })
+      return document; // คืนค่า document ที่สร้างใหม่
+    }); // --- จบ Transaction ---
     res.json({
       message: "Upload document successful and notification sent",
-      document,
+      document: result,
     });
   } catch (err) {
     console.log(err);
@@ -674,7 +672,7 @@ exports.useruploadDocument = async (req, res) => {
   }
 };
 //ยังไม่ใช้
-exports.getdeposits = async (req, res) => {
+export const getdeposits = async (req, res) => {
   try {
     const userId = req.session.user?.id; // ← ใช้ session
     if (!userId) {
@@ -696,7 +694,7 @@ exports.getdeposits = async (req, res) => {
 };
 
 //complete ยังไม่ใช้
-exports.getpostBySeller = async (req, res) => {
+export const getpostBySeller = async (req, res) => {
   try {
     const userFromSession = req.session.user
     if (!userFromSession) {
@@ -737,7 +735,7 @@ exports.getpostBySeller = async (req, res) => {
 }
 
 //complete
-exports.deletePostBySeller = async (req, res) => {
+export const deletePostBySeller = async (req, res) => {
   try {
     const { postId } = req.params
     if (!req.session.user || !req.session.user.userId) {
@@ -829,16 +827,16 @@ exports.deletePostBySeller = async (req, res) => {
   }
 }
 //complete
-exports.searchFiltersSeller = async (req, res) => {
+export const searchFiltersSeller = async (req, res) => {
   try {
     // 1. ดึงข้อมูล user จาก session
     if (!req.session.user || !req.session.user.userId) {
       return res.status(401).json({ success: false, message: 'กรุณาเข้าสู่ระบบก่อน' });
     }
-    const { userId, userType } = req.session.user;
+    const { userId, userType, sellerId } = req.session.user;
 
     // 2. ตรวจสอบสิทธิ์: เฉพาะ Seller เท่านั้นที่สามารถค้นหาโพสต์ของตัวเองได้
-    if (userType !== 'Seller') {
+    if (userType !== 'Seller' || !sellerId) {
       return res.status(403).json({ success: false, message: 'Forbidden: Only sellers can access this resource.' });
     }
 
@@ -847,7 +845,7 @@ exports.searchFiltersSeller = async (req, res) => {
 
     // 3. สร้างเงื่อนไขพื้นฐาน: ต้องเป็นโพสต์ของ user คนนี้เท่านั้น
     const whereClause = {
-      userId: userId,
+      sellerId: sellerId,
     };
 
     if (q) {
@@ -883,7 +881,7 @@ exports.searchFiltersSeller = async (req, res) => {
   }
 };
 //complete ใช้แบบ stripe ส่วนนี้ยังคงไม่ต้องใช้
-exports.createdeposite = async (req, res) => {
+export const createdeposite = async (req, res) => {
   try {
     const user = req.session.user;
     if (!user || !user.userId) {
@@ -1013,7 +1011,7 @@ exports.createdeposite = async (req, res) => {
   }
 }
 //complete ใช้แบบ stripe ส่วนนี้ยังคงไม่ต้องใช้
-exports.updateDepositStatus = async (req, res) => {
+export const updateDepositStatus = async (req, res) => {
   try {
     const user = req.session.user;
     if (!user || !user.userId) {
@@ -1109,7 +1107,7 @@ exports.updateDepositStatus = async (req, res) => {
 };
 
 
-exports.searchFillerDiposit = async (req, res) => {
+export const searchFillerDiposit = async (req, res) => {
   try {
     const user = req.session.user
     if (!user || !user.userId) {
@@ -1172,7 +1170,7 @@ exports.searchFillerDiposit = async (req, res) => {
   }
 }
 //createDateSlot
-exports.createDateTimeSlot = async (req, res) => {
+export const createDateTimeSlot = async (req, res) => {
   if (!req.session || !req.session.user) {
     return res.status(401).json({ message: 'Unauthorized: กรุณาเข้าสู่ระบบก่อน' });
   }
@@ -1186,8 +1184,11 @@ exports.createDateTimeSlot = async (req, res) => {
     return res.status(403).json({ message: 'Forbidden: คุณไม่มีสิทธิ์ในการสร้างช่วงเวลา' });
   }
 
-  const { date, timeSlots } = req.body;
+  const { date, timeSlots, postId } = req.body;
 
+  if (!postId) {
+    return res.status(400).json({ message: 'กรุณาระบุ postId ของทรัพย์สิน' });
+  }
   if (!date || !timeSlots || !Array.isArray(timeSlots) || timeSlots.length === 0) {
     return res.status(400).json({
       message: 'กรุณาระบุ date (YYYY-MM-DD) และ timeSlots ที่เป็น array',
@@ -1195,6 +1196,26 @@ exports.createDateTimeSlot = async (req, res) => {
   }
 
   try {
+    console.log("ID seller:", sellerId)
+    const post = await prisma.propertyPost.findUnique({
+      where: { id: postId },
+    });
+
+    if (!post) {
+      return res.status(404).json({ message: `ไม่พบ PropertyPost ที่มี ID: ${postId}` });
+    }
+    if (post.sellerId !== sellerId) {
+      return res.status(403).json({ message: 'Forbidden: คุณไม่ใช่เจ้าของโพสต์นี้' });
+    }
+
+    // const isOwner = post.Seller && post.Seller.some(seller => seller.id === sellerId);
+    // console.log("Post:", isOwner)
+    // // ตรวจสอบความเป็นเจ้าของ (ต้องแน่ใจว่า PropertyPost model มี sellerId)
+    // if (!isOwner) {
+    //   return res.status(403).json({ message: 'Forbidden: คุณไม่ใช่เจ้าของโพสต์นี้' });
+    // }
+
+
     const slotsToCreate = [];
 
     for (const slot of timeSlots) {
@@ -1212,24 +1233,26 @@ exports.createDateTimeSlot = async (req, res) => {
         throw new Error(`เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มต้น: ${slot.startTime}-${slot.endTime}`);
       }
 
+      // 🔥 4. เพิ่มเงื่อนไข postId ในการตรวจสอบเวลาที่ซ้ำซ้อน
       const existingSlot = await prisma.dateTimeSlot.findFirst({
         where: {
-          sellerId: sellerId, // <-- ค่านี้จะถูกต้องแล้ว
+          postId: postId, // <-- ตรวจสอบเฉพาะ Slot ของโพสต์นี้
           AND: [{ startTime: { lt: endDate } }, { endTime: { gt: startDate } }],
         },
       });
 
       if (existingSlot) {
-        throw new Error(`ช่วงเวลา ${slot.startTime}-${slot.endTime} ทับซ้อนกับ Slot ที่มีอยู่แล้ว`);
+        throw new Error(`ช่วงเวลา ${slot.startTime}-${slot.endTime} ทับซ้อนกับ Slot ของโพสต์นี้ที่มีอยู่แล้ว`);
       }
 
+      // 🔥 5. เพิ่ม postId เข้าไปในข้อมูลที่จะสร้าง
       slotsToCreate.push({
         startTime: startDate,
         endTime: endDate,
-        sellerId: sellerId, // <-- ค่านี้จะถูกต้องแล้ว
+        sellerId: sellerId,
+        postId: postId, // <-- เพิ่ม postId ที่นี่
       });
     }
-
     for (let i = 0; i < slotsToCreate.length; i++) {
       for (let j = i + 1; j < slotsToCreate.length; j++) {
         const slotA = slotsToCreate[i];
@@ -1245,7 +1268,7 @@ exports.createDateTimeSlot = async (req, res) => {
     });
 
     res.status(201).json({
-      message: `สร้างช่วงเวลาสำเร็จทั้งหมด ${result.count} รายการ`,
+      message: `สร้างช่วงเวลาสำหรับโพสต์ ID: ${postId} สำเร็จ ${result.count} รายการ`,
       count: result.count,
     });
 
@@ -1255,74 +1278,81 @@ exports.createDateTimeSlot = async (req, res) => {
 };
 
 //createbooking
-exports.createBooking = async (req, res) => {
+export const createBooking = async (req, res) => {
+  // 1. ตรวจสอบ Session และรับข้อมูลจาก Body
   if (!req.session.user || !req.session.user.userId || !req.session.user.userType) {
     return res.status(401).json({ message: 'Unauthorized: กรุณาเข้าสู่ระบบก่อน' });
   }
-  
-  const { userId: bookerId, userType: bookerUserType, buyerId: sessionBuyerId, sellerId: sessionSellerId } = req.session.user;
-  const { dateTimeSlotId, buyerId: buyerIdFromRequest } = req.body;
 
-  if (!dateTimeSlotId) {
-    return res.status(400).json({ message: 'กรุณาระบุ dateTimeSlotId' });
-  }
+  const { userType: bookerUserType, buyerId: sessionBuyerId, sellerId: sessionSellerId } = req.session.user;
+  const { dateTimeSlotId, unitId, buyerId: buyerIdFromRequest } = req.body; // <-- รับ unitId เพิ่ม
 
-  // 2. ตรวจสอบเงื่อนไขเฉพาะของ Seller
-  // --- เปลี่ยนจาก 'SELLER' เป็นค่าใน Enum UserType ของคุณ (ถ้ามี) ---
-  // สมมติว่าค่าใน session คือ 'Seller'
-  if (bookerUserType === 'Seller' && !buyerIdFromRequest) {
-    return res.status(400).json({ message: 'สำหรับผู้ขาย กรุณาระบุ buyerId ของลูกค้าที่ต้องการนัดหมาย' });
+  // 2. ตรวจสอบ Input ให้ครบถ้วน
+  if (!dateTimeSlotId || !unitId) {
+    return res.status(400).json({ message: 'กรุณาระบุ dateTimeSlotId และ unitId' });
   }
+  // if (bookerUserType === 'Seller' && !buyerIdFromRequest) {
+  //   return res.status(400).json({ message: 'สำหรับผู้ขาย กรุณาระบุ buyerId ของลูกค้า' });
+  // }
 
   try {
-
     const newBooking = await prisma.$transaction(async (tx) => {
+      // 3. ดึงข้อมูล Slot และ Unit มาตรวจสอบพร้อมกัน
       const slot = await tx.dateTimeSlot.findUnique({
         where: { id: dateTimeSlotId },
+        select: { id: true, isBooked: true, postId: true, sellerId: true } // ดึง postId และ sellerId มาด้วย
+      });
+      const unit = await tx.propertyUnit.findUnique({
+        where: { id: unitId },
+        select: { id: true, propertyPostId: true } // ดึง propertyPostId มาด้วย
       });
 
-      if (!slot) {
+      // 4. ตรวจสอบความถูกต้องของข้อมูล
+      if (!slot || !unit) {
         throw new Error('NOT_FOUND');
       }
       if (slot.isBooked) {
         throw new Error('ALREADY_BOOKED');
       }
+      // -- ตรวจสอบว่า Slot และ Unit มาจาก Post เดียวกัน --
+      if (slot.postId !== unit.propertyPostId) {
+        throw new Error('SLOT_UNIT_MISMATCH');
+      }
 
+      // 5. กำหนดค่า buyerId และ sellerId
       let buyerId;
-      let sellerId;
+      const sellerId = slot.sellerId; // sellerId ได้มาจาก Slot ที่ผูกกับ Post โดยตรง
 
-      // 3. กำหนดค่า buyerId และ sellerId ตาม userType ของผู้จอง
       if (bookerUserType === 'Buyer') {
         buyerId = sessionBuyerId;
-        sellerId = slot.sellerId;
       } else if (bookerUserType === 'Seller') {
-        // --- Security Check ---
-        if (slot.sellerId !== sessionSellerId) {
+        // Security Check: ตรวจสอบว่า Seller ที่จองเป็นเจ้าของ Slot จริง
+        if (sellerId !== sessionSellerId) {
           throw new Error('FORBIDDEN');
         }
-        buyerId = buyerIdFromRequest;
-        sellerId = sessionSellerId;
+        buyerId = buyerIdFromRequest || sessionBuyerId;
       } else {
         throw new Error('INVALID_USER_TYPE');
       }
 
-      // อัปเดต Slot ให้เป็น isBooked = true
+      // 6. อัปเดต Slot ให้ถูกจอง
       await tx.dateTimeSlot.update({
         where: { id: dateTimeSlotId },
         data: { isBooked: true },
       });
 
-      // สร้าง Booking
+      // 7. สร้าง Booking พร้อม propertyUnitId
       const booking = await tx.booking.create({
         data: {
           buyerId,
           sellerId,
           dateTimeSlotId,
+          propertyUnitId: unitId, // <-- บันทึก ID ของยูนิตที่นี่
         },
       });
 
       return booking;
-    });
+    }, { timeout: 10000 });
 
     res.status(201).json({
       message: 'การจองนัดหมายสำเร็จ',
@@ -1330,20 +1360,26 @@ exports.createBooking = async (req, res) => {
     });
 
   } catch (error) {
-    // 5. จัดการ Error ที่เกิดขึ้นระหว่าง Transaction
+    // 8. จัดการ Error ที่อาจเกิดขึ้น
     if (error.message === 'NOT_FOUND') {
-      return res.status(404).json({ message: 'ไม่พบช่วงเวลาที่คุณต้องการจอง' });
+      return res.status(404).json({ message: 'ไม่พบช่วงเวลาหรือยูนิตที่คุณต้องการจอง' });
     }
     if (error.message === 'ALREADY_BOOKED') {
-      return res.status(409).json({ message: 'ขออภัย ช่วงเวลานี้ถูกจองไปแล้ว' }); // 409 Conflict
+      return res.status(409).json({ message: 'ขออภัย ช่วงเวลานี้ถูกจองไปแล้ว' });
+    }
+    if (error.message === 'SLOT_UNIT_MISMATCH') {
+      return res.status(400).json({ message: 'ข้อมูลช่วงเวลาและยูนิตไม่ตรงกัน' });
+    }
+    if (error.message === 'FORBIDDEN') {
+      return res.status(403).json({ message: 'คุณไม่มีสิทธิ์จองช่วงเวลานี้' });
     }
 
-    // สำหรับ Error อื่นๆ ที่ไม่คาดคิด
     console.error('เกิดข้อผิดพลาดในการสร้าง Booking:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์' });
   }
 };
-exports.revmovedeposit = async (req, res) => {
+
+export const revmovedeposit = async (req, res) => {
   try {
     const user = req.session.user
     if (!user || !user.userId) {
@@ -1411,7 +1447,7 @@ exports.revmovedeposit = async (req, res) => {
     res.status(500).json({ message: "เกิดข้อผิดพลาดที่เซิร์ฟเวอร์" });
   }
 }
-exports.removeTimeSlot = async (req, res) => {
+export const removeTimeSlot = async (req, res) => {
   try {
     // 1. ตรวจสอบ session และสิทธิ์การเป็นผู้ขาย
     const user = req.session.user;
@@ -1468,7 +1504,7 @@ exports.removeTimeSlot = async (req, res) => {
     res.status(500).json({ message: "เกิดข้อผิดพลาดที่เซิร์ฟเวอร์" });
   }
 };
-exports.removeBooking = async (req, res) => {
+export const removeBooking = async (req, res) => {
   try {
     const user = req.session.user
     if (!user || !user.userId) {
@@ -1543,25 +1579,184 @@ exports.removeBooking = async (req, res) => {
           Message: notificationMessage,
           relatedProcess: "BOOKING_CANCELLED",
           referenceId: booking.dateTimeSlot.id,
-          Status:"UNREAD"
+          Status: "UNREAD"
         }
       })
       return result
     })
 
     res.json({
-      message:"ยกเลิกการจองสำเร็จ",
-      deletedBooking:deletedBooking
+      message: "ยกเลิกการจองสำเร็จ",
+      deletedBooking: deletedBooking
     })
   } catch (err) {
     console.log(err)
     res.status(500).json({
-      message:"Server Error"
+      message: "Server Error"
     })
   }
 }
+export const uploadFinalSlip = async (req, res) => {
+  const { bookingId } = req.params;
+  const { userId, First_name } = req.session.user;
+
+  if (!req.file) {
+    return res.status(400).json({ message: "กรุณาแนบไฟล์สลิป" });
+  }
+
+  try {
+    // 1. ค้นหาการจองเพื่อตรวจสอบสิทธิ์และสถานะ
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        Buyer: { select: { userId: true } },
+        Seller: { select: { userId: true } }, // ดึง Seller มาเพื่อส่ง Notification
+      },
+    });
+
+    // 2. ตรวจสอบเงื่อนไข
+    if (!booking) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลการจอง" });
+    }
+    if (booking.Buyer.userId !== userId) {
+      return res.status(403).json({ message: "คุณไม่มีสิทธิ์อัปโหลดสลิปสำหรับการจองนี้" });
+    }
+    // ป้องกันการอัปโหลดซ้ำ
+    if (['PENDING_FINAL_VERIFICATION', 'COMPLETED'].includes(booking.bookingStatus)) {
+      return res.status(409).json({ message: "คุณได้อัปโหลดสลิปสุดท้ายไปแล้ว" });
+    }
+
+    const fileUrl = req.file.path; // URL ของสลิปจาก Cloudinary
+
+    // 3. ใช้ Transaction เพื่ออัปเดต Booking และสร้าง Notification พร้อมกัน
+    const [updatedBooking] = await prisma.$transaction([
+      // --- งานที่ 1: อัปเดต Booking ด้วยข้อมูลสลิป ---
+      prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          finalSlipUrl: fileUrl,
+          finalSlipUploadDate: new Date(),
+          bookingStatus: 'PENDING_FINAL_VERIFICATION', // เปลี่ยนสถานะเป็น "รอการตรวจสอบ"
+        },
+      }),
+
+      // --- งานที่ 2: สร้าง Notification แจ้งเตือนผู้ขาย ---
+      prisma.notification.create({
+        data: {
+          userId: booking.Seller.userId,
+          referenceId: bookingId,
+          Title: "สลิปการชำระเงินส่วนที่เหลือถูกส่งมาแล้ว",
+          Message: `คุณ ${First_name} ได้อัปโหลดสลิปสุดท้ายแล้ว กรุณาตรวจสอบ`,
+          Status: 'UNREAD',
+          relatedProcess: 'FINAL_SLIP_UPLOADED',
+        }
+      })
+    ], { timeout: 10000 });
 
 
+    // 4. ส่ง Response สำเร็จกลับไป
+    res.status(200).json({
+      message: "อัปโหลดสลิปสำเร็จ! กรุณารอการยืนยันจากผู้ขาย",
+      booking: updatedBooking,
+    });
+
+  } catch (error) {
+    console.error("Error uploading final slip:", error);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในการอัปโหลดสลิป" });
+  }
+};
+
+export const confirmedSlipBySeller = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { userId } = req.session.user;
+
+    // 1. ค้นหา Booking โดย include ข้อมูล unit และ post ที่เกี่ยวข้องทั้งหมด
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        Buyer: { select: { userId: true } },
+        Seller: { select: { userId: true } },
+        // ดึงข้อมูล unit และ post ที่ผูกกับ booking นี้โดยตรง
+        propertyUnit: {
+          include: {
+            propertyPost: true, // ดึงข้อมูล PropertyPost ทั้งหมดมาเลย
+          }
+        }
+      },
+    });
+
+    // 2. ตรวจสอบเงื่อนไขต่างๆ
+    if (!booking) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลการจองนี้" });
+    }
+    // ตรวจสอบว่า booking นี้ผูกกับ propertyUnit จริงๆ
+    if (!booking.propertyUnit || !booking.propertyUnit.propertyPost) {
+      return res.status(404).json({ message: "ไม่สามารถหา Unit หรือ Post ที่เกี่ยวข้องกับการจองนี้ได้" });
+    }
+    if (booking.Seller.userId !== userId) {
+      return res.status(403).json({ message: "คุณไม่มีสิทธิ์ยืนยันการชำระเงินนี้" });
+    }
+    if (booking.bookingStatus !== 'PENDING_FINAL_VERIFICATION') {
+      return res.status(400).json({
+        message: `ไม่สามารถยืนยันได้ เนื่องจากสถานะปัจจุบันคือ '${booking.bookingStatus}'`
+      });
+    }
+
+    // 3. เตรียมข้อมูลสำหรับ Transaction
+    const unitToUpdate = booking.propertyUnit;
+    const postToUpdate = booking.propertyUnit.propertyPost;
+
+    // คำนวณสถานะใหม่ของ Post: ถ้ายูนิตที่เหลือเป็น 1 (กำลังจะกลายเป็น 0) ให้เปลี่ยนเป็น SOLD_OUT
+    const newPostStatus = (postToUpdate.NumberOfUnits - 1 <= 0) ? 'SOLD_OUT' : postToUpdate.Status_post;
+
+    // 4. ใช้ Transaction เพื่อการันตีว่าทุกอย่างจะสำเร็จพร้อมกัน
+    const [updatedBooking] = await prisma.$transaction([
+      // --- งานที่ 1: อัปเดตสถานะ PropertyUnit เป็น "SOLD" ---
+      prisma.propertyUnit.update({
+        where: { id: unitToUpdate.id },
+        data: { Status: 'SOLD' },
+      }),
+
+      // --- งานที่ 2: ลดจำนวนยูนิต และอัปเดตสถานะ PropertyPost ---
+      prisma.propertyPost.update({
+        where: { id: postToUpdate.id },
+        data: {
+          NumberOfUnits: { decrement: 1 },
+          Status_post: newPostStatus,
+        },
+      }),
+
+      // --- งานที่ 3: อัปเดตสถานะ Booking เป็น "COMPLETED" ---
+      prisma.booking.update({
+        where: { id: bookingId },
+        data: { bookingStatus: 'COMPLETED' },
+      }),
+
+      // --- งานที่ 4: สร้าง Notification แจ้งเตือนผู้ซื้อ ---
+      prisma.notification.create({
+        data: {
+          userId: booking.Buyer.userId,
+          referenceId: bookingId,
+          Title: "การชำระเงินได้รับการยืนยันแล้ว",
+          Message: `ผู้ขายได้ยืนยันสลิปของคุณสำหรับยูนิต #${unitToUpdate.Unit_Number} แล้ว กระบวนการเสร็จสมบูรณ์`,
+          Status: 'UNREAD',
+          relatedProcess: 'BOOKING_COMPLETED',
+        }
+      })
+    ]);
+
+    // 5. ส่ง Response สำเร็จกลับไป
+    res.status(200).json({
+      message: "ยืนยันสลิปและปิดการขายยูนิตสำเร็จ!",
+      booking: updatedBooking,
+    });
+
+  } catch (err) {
+    console.error("Error confirming slip:", err);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+};
 
 
 
