@@ -130,6 +130,13 @@ enum BookingStatus {
   CANCELLED
 }
 
+enum UnitStatus {
+  AVAILABLE // ว่าง
+  SOLD // ขายแล้ว
+  RENTED // เช่าแล้ว
+  PENDING // กำลังดำเนินการ
+}
+
 model User {
   id                 String               @id @default(cuid())
   First_name         String
@@ -227,26 +234,37 @@ model PropertyPost {
   Name                   String?
   Phone                  String
   floor                  Int?
-
+  NumberOfUnits          Int?                        @default(1)
   // Deposit_Rent           Float?
-  Interest       Float?
-  Status_post    Status_post      @default(PENDING)
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId         String
+  Interest               Float?
+  Status_post            Status_post                 @default(PENDING)
+  user                   User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                 String
   // Propertytype           PropertyType?              @relation(fields: [propertyTypeId], references: [id])
   // propertyTypeId         String?
-  seller         Seller?          @relation(fields: [sellerId], references: [id])
-  sellerId       String?
-  Category       Category?        @relation(fields: [categoryId], references: [id])
-  categoryId     String?
-  Deposit        Deposit[]
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  Payment        Payment[]
-  Image          Image[]
+  seller                 Seller?                     @relation(fields: [sellerId], references: [id])
+  sellerId               String?
+  Category               Category?                   @relation(fields: [categoryId], references: [id])
+  categoryId             String?
+  Deposit                Deposit[]
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  Payment                Payment[]
+  Image                  Image[]
+  DocumentUpload         DocumentUpload[]
+  Video                  Video[]
+  DateTimeSlot           DateTimeSlot[]
+  PropertyUnit           PropertyUnit[]
+}
+
+model PropertyUnit {
+  id             String           @id @default(cuid())
+  Unit_Number    String
+  Status         UnitStatus       @default(AVAILABLE)
+  propertyPost   PropertyPost     @relation(fields: [propertyPostId], references: [id])
+  propertyPostId String
   DocumentUpload DocumentUpload[]
-  Video          Video[]
-  DateTimeSlot   DateTimeSlot[]
+  Booking        Booking?
 }
 
 //เปรียบเหมือนตะกร้าสินค้า
@@ -281,6 +299,8 @@ model DocumentUpload {
   depositId          String?
   Post               PropertyPost? @relation(fields: [postId], references: [id])
   postId             String?
+  unitId             String? // ID ของยูนิตย่อยที่เกี่ยวข้อง (ถ้ามี)
+  unit               PropertyUnit? @relation(fields: [unitId], references: [id], onDelete: SetNull)
 }
 
 model Payment {
@@ -395,6 +415,8 @@ model Booking {
   finalSlipUrl        String? // URL ของสลิปสุดท้ายจาก Cloudinary
   finalSlipUploadDate DateTime? // วันที่อัปโหลดสลิปสุดท้าย
   bookingStatus       BookingStatus @default(CONFIRMED) // สถานะโดยรวมของการจอง
+  propertyUnit        PropertyUnit? @relation(fields: [propertyUnitId], references: [id])
+  propertyUnitId      String?       @unique
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 }

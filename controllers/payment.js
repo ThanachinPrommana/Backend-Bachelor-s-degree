@@ -1,21 +1,24 @@
 // console.log("My Stripe Secret Key is:", process.env.STRIPE_SECRET_KEY);
-const prisma = require("../config/prisma")
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+import prisma from "../config/prisma.js";
+import Stripe from 'stripe';
 
-exports.createStripePaymentIntent = async (req, res) => {
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+
+export const createStripePaymentIntent = async (req, res) => {
     try {
         const user = req.session.user; // หรือ req.user จาก authMiddleware
         const buyerId = user.userId;
-        const { postId } = req.body;
+        const { postId, unitId } = req.body;
 
-        if (!postId) {
+        if (!postId || !unitId) {
             return res.status(400).json({ message: "Bad Request: ไม่พบ postId" });
         }
 
         const document = await prisma.documentUpload.findFirst({
             where: {
                 userId: buyerId,
-                postId: postId
+                postId: postId,
+                unitId: unitId
             }
         })
 
@@ -38,10 +41,14 @@ exports.createStripePaymentIntent = async (req, res) => {
 
         // if (deposit.Post.userId === buyerId) {
         //     return res.status(403).json({ message: "Forbidden: คุณไม่สามารถมัดจำประกาศของตัวเองได้" });
-        // }
+        // }s
+        // ตรวจสอบสถานะของยูนิตโดยตรง (สำคัญมาก)
+        const unit = await prisma.propertyUnit.findUnique({
+            where: { id: unitId }
+        });
 
-        if (deposit.Deposit_Status !== 'PENDING') {
-            return res.status(409).json({ message: "Conflict: ประกาศนี้ไม่ว่างสำหรับการมัดจำ" });
+        if (!unit || unit.Status !== 'PENDING') { // สถานะของยูนิตควรเป็น PENDING จากขั้นตอนการอัปโหลดเอกสาร
+            return res.status(409).json({ message: `Conflict: ยูนิตนี้ไม่ว่างสำหรับการมัดจำ (สถานะปัจจุบัน: ${unit?.Status})` });
         }
 
         const amountInSatang = Math.round(deposit.Deposit_Amount * 100);
@@ -56,7 +63,8 @@ exports.createStripePaymentIntent = async (req, res) => {
             metadata: {
                 depositId: deposit.id,
                 postId: deposit.postId,
-                buyerId: buyerId
+                buyerId: buyerId,
+                unitId: unitId
             }
         });
 
@@ -70,7 +78,7 @@ exports.createStripePaymentIntent = async (req, res) => {
     }
 };
 
-exports.handleStripeWebhook = async (req, res) => {
+export const handleStripeWebhook = async (req, res) => {
 
     // console.log('1. ได้รับ Webhook แล้ว');
 

@@ -1,37 +1,41 @@
-// routes/user.js
-const express = require("express");
+import express from "express";
+import upload from "../Middlewares/upload.js";
+import uploadDocument from "../Middlewares/document.js";
+import { isAuthenticated, isSeller } from "../Middlewares/authCheck.js";
+import { handleStripeWebhook } from "../controllers/payment.js";
+
 const router = express.Router();
 
-const {
+import {
   // Admin / Management
-  updateStatusSeller,   // PATCH /seller/:sellerId/status
-  deleteUser,           // DELETE /user/:id
+  updateStatusSeller,
+  deleteUser,
 
   // Lists / Search
-  listUserSeller,       // GET /userSeller
-  listUserBuyer,        // GET /userBuyer
-  searchFiltersSeller,  // GET /search/post/seller?q=...
+  listUserSeller,
+  listUserBuyer,
+  searchFiltersSeller,
 
   // Profiles (read)
-  getUserProfile,       // GET /profile/:id            (อ่านโปรไฟล์ Buyer ตาม id) - ยังใช้ภายนอก
-  getSellerProfile,     // GET /profileseller/:id      (อ่านโปรไฟล์ Seller ตาม id) - ยังไม่ใช้
+  getUserProfile,
+  getSellerProfile,
 
   // Profiles (self update)
-  updateUser,           // PATCH /profile              (อัปเดต User + Buyer บางส่วน เมื่อเป็นผู้ซื้อ)
-  updateSeller,         // PATCH /profileseller        (อัปเดต User + Buyer + Seller พร้อมกัน)
-  updateimage,          // POST  /image                (อัปโหลด/อัปเดตรูปโปรไฟล์)
+  updateUser,
+  updateSeller,
+  updateimage,
 
   // Seller posts management (self)
-  getpostBySeller,      // GET /post/seller
-  deletePostBySeller,   // DELETE /seller/remove/post/:postId
+  getpostBySeller,
+  deletePostBySeller,
 
   // Deposits
-  createdeposite,       // POST   /user/create/deposit
-  getdeposits,          // GET    /deposit            (ของผู้ใช้ที่ล็อกอิน ตาม session)
-  updateDepositStatus,  // PATCH  /update/status/deposit/:depositId
+  createdeposite,
+  getdeposits,
+  updateDepositStatus,
 
   // Documents
-  useruploadDocument,   // POST /document
+  useruploadDocument,
 
   createBooking,
 
@@ -40,15 +44,9 @@ const {
   removeBooking,
   uploadFinalSlip,
   confirmedSlipBySeller
-} = require("../controllers/user");
-const {
-  createStripePaymentIntent
-} = require("../controllers/payment")
+} from "../controllers/user.js";
 
-const upload = require("../Middlewares/upload");
-const uploadDocument = require("../Middlewares/document");
-const { isAuthenticated, isSeller } = require("../Middlewares/authCheck");
-const { handleStripeWebhook } = require("../controllers/payment");
+import { createStripePaymentIntent } from "../controllers/payment.js";
 
 // -------------------------------------------------------------
 // Admin / Management (ควรมี adminOnly เพิ่มเติม ถ้ามี middleware)
@@ -132,4 +130,5 @@ router.post(
 );
 //confirmedSlipBySeller
 router.post("/confirmed-slip/:bookingId", isAuthenticated, confirmedSlipBySeller)
-module.exports = router;
+
+export default router;

@@ -1,8 +1,8 @@
 // const prisma = require("@prisma/client")
-const prisma = require("../config/prisma")
-const cloudinary = require("../utils/cloudinary")
+import prisma from "../config/prisma.js";
+import cloudinary from "../utils/cloudinary.js";
 //complete
-exports.approveDocument = async (req, res) => {
+export const approveDocument = async (req, res) => {
     try {
 
 
@@ -134,7 +134,7 @@ exports.approveDocument = async (req, res) => {
     }
 }
 //complete ยังไม่ใช้
-exports.getDocument = async (req, res) => {
+export const getDocument = async (req, res) => {
     try {
         const userId = req.session.user.id
         if (!userId) {
@@ -210,7 +210,7 @@ const handlequeryDoc = async (req, res, query) => {
     }
 }
 //complete
-exports.searchDocument = async (req, res) => {
+export const searchDocument = async (req, res) => {
     try {
         if (!req.session.user || !req.session.user.userId) {
             return res.status(401).json({ message: "Unauthorized. Please log in." });

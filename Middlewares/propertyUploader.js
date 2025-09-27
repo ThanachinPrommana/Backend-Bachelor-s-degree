@@ -1,8 +1,8 @@
 // File: middleware/propertyUploader.js
 
-const multer = require("multer");
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const cloudinary = require("../utils/cloudinary");
+import multer from 'multer';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
+import cloudinary from '../utils/cloudinary.js';
 
 // 1. สร้าง CloudinaryStorage ที่ตรวจสอบประเภทไฟล์เพื่อกำหนดค่าแบบไดนามิก
 const storage = new CloudinaryStorage({
@@ -58,4 +58,4 @@ const propertyUpload = multer({
   },
 });
 
-module.exports = propertyUpload;
+export default propertyUpload;

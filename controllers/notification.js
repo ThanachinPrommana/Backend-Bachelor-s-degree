@@ -1,6 +1,6 @@
-const prisma = require("../config/prisma")
+import prisma from "../config/prisma.js";
 //ยังไม่ใช้
-exports.getuserNotifications = async (req, res) => {
+export const getuserNotifications = async (req, res) => {
     try {
         const { userId } = req.session.user
         if (!userId) {
@@ -24,7 +24,7 @@ exports.getuserNotifications = async (req, res) => {
     }
 }
 //remove Notification complete
-exports.removeNotification = async (req, res) => {
+export const removeNotification = async (req, res) => {
     try {
         const { notiId } = req.params
         const userId = req.session.user?.id
@@ -69,7 +69,7 @@ exports.removeNotification = async (req, res) => {
     }
 }
 //removeAll
-exports.removeNotiAll = async (req, res) => {
+export const removeNotiAll = async (req, res) => {
     try {
         const userId = req.session.user?.id
 

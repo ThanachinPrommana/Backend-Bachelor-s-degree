@@ -1,9 +1,16 @@
-const prisma = require("../config/prisma")
-const bcrypt = require('bcryptjs')
-const jwt = require('jsonwebtoken')
-const { Parking_Needs: ParkingNeedsEnum, Nearby_Facilities: NearbyFacilitiesEnum, Lifestyle_Preferences: LifestylePreferencesEnum, Parking_Needs, Nearby_Facilities, Lifestyle_Preferences } = require("@prisma/client")
-const { sendResetEmail, verifyemail } = require("../utils/email")
-exports.preRegister = async (req, res) => {
+import prisma from "../config/prisma.js";
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { 
+    Parking_Needs as ParkingNeedsEnum, 
+    Nearby_Facilities as NearbyFacilitiesEnum, 
+    Lifestyle_Preferences as LifestylePreferencesEnum, 
+    Parking_Needs, 
+    Nearby_Facilities, 
+    Lifestyle_Preferences 
+} from "@prisma/client";
+import { sendResetEmail, verifyemail } from "../utils/email.js";
+export const preRegister = async (req, res) => {
   try {
     const {
       Email,
@@ -46,7 +53,7 @@ exports.preRegister = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-exports.verifyandregister = async (req, res) => {
+export const verifyandregister = async (req, res) => {
   try {
     const {
       token: encodedToken,
@@ -183,7 +190,7 @@ exports.verifyandregister = async (req, res) => {
 }
 
 // ใน controllers/authController.js
-exports.login = async (req, res) => {
+export const login = async (req, res) => {
   try {
     const { Email, Password } = req.body;
     const user = await prisma.user.findFirst({
@@ -247,7 +254,7 @@ exports.login = async (req, res) => {
   }
 };
 
-exports.forgotPassword = async (req, res) => {
+export const forgotPassword = async (req, res) => {
   try {
     const { Email } = req.body;
     const user = await prisma.user.findFirst({ where: { Email: Email } });
@@ -288,7 +295,7 @@ exports.forgotPassword = async (req, res) => {
 
 
 // ตั้งรหัสผ่านใหม่
-exports.resetPassword = async (req, res) => {
+export const resetPassword = async (req, res) => {
   const { token, Password } = req.body;
 
   const tokenEntry = await prisma.passwordResetToken.findFirst({ where: { token } });
@@ -313,7 +320,7 @@ exports.resetPassword = async (req, res) => {
 };
 
 
-exports.getProfile = async (req, res) => {
+export const getProfile = async (req, res) => {
   try {
     // 🔥 --- ส่วนที่แก้ไข --- 🔥
     // เปลี่ยนจากการดึง id เป็น userId และตั้งชื่อตัวแปรใหม่ว่า id เพื่อให้โค้ดส่วนที่เหลือใช้ได้เหมือนเดิม
@@ -414,7 +421,7 @@ exports.getProfile = async (req, res) => {
 };
 
 
-exports.logout = (req, res) => {
+export const logout = (req, res) => {
   console.log("Logout route called");
   console.log("Session before destroy:", req.session);
   try {
@@ -432,7 +439,7 @@ exports.logout = (req, res) => {
   }
 };
 
-exports.registerSeller = async (req, res) => {
+export const registerSeller = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: "กรุณาแนบรูปภาพบัตรประชาชน" });
   }

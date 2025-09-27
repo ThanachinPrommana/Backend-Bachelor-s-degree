@@ -1,17 +1,9 @@
-const express = require("express")
-const router = express.Router()
-const {
-    preRegister,
-    login,
-    forgotPassword,
-    resetPassword,
-    verifyandregister,
-    getProfile,
-    logout,
-    registerSeller
-} = require("../controllers/auth")
-const { isAuthenticated } = require("../Middlewares/authCheck")
-const uploadNationalId = require("../Middlewares/uploadNationalIdImage")
+import express from 'express';
+import { preRegister, login, forgotPassword, resetPassword, verifyandregister, getProfile, logout, registerSeller } from '../controllers/auth.js';
+import { isAuthenticated } from '../Middlewares/authCheck.js';
+import uploadNationalId from '../Middlewares/uploadNationalIdImage.js';
+
+const router = express.Router();
 
 router.post("/preRegister", preRegister)
 router.post("/verifyandregister", verifyandregister)
@@ -24,4 +16,4 @@ router.post("/resetpassword", resetPassword)
 router.get("/profiles/user", isAuthenticated, getProfile)
 router.post("/logout", logout)
 
-module.exports = router
+export default router;

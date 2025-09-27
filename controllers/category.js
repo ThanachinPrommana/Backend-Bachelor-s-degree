@@ -1,5 +1,5 @@
-const prisma = require("../config/prisma")
-exports.create = async (req, res) => {
+import prisma from "../config/prisma.js";
+export const create = async (req, res) => {
     try {
         const { name } = req.body
         const category = await prisma.category.create({
@@ -16,7 +16,7 @@ exports.create = async (req, res) => {
         })
     }
 }
-exports.list = async (req, res) => {
+export const list = async (req, res) => {
     try {
         const category = await prisma.category.findMany()
         
@@ -27,7 +27,7 @@ exports.list = async (req, res) => {
         res.status(500).json({ message: "Server Error" });
     }
 }
-exports.getById = async (req, res) => {
+export const getById = async (req, res) => {
   try {
     const { id } = req.params;
     const cat = await prisma.category.findUnique({
@@ -41,7 +41,7 @@ exports.getById = async (req, res) => {
     res.status(500).json({ message: "Server Error" });
   }
 };
-exports.removecategory = async (req, res) => {
+export const removecategory = async (req, res) => {
     try {
         const { id } = req.params;
 

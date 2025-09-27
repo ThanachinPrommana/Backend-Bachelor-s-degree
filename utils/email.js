@@ -1,8 +1,8 @@
-const nodemailer = require('nodemailer');
+import nodemailer from 'nodemailer';
 
 
 
-exports.sendResetEmail = async (to, link) => {
+export const sendResetEmail = async (to, link) => {
   const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -17,7 +17,7 @@ exports.sendResetEmail = async (to, link) => {
   });
 };
 
-exports.verifyemail = async (to, link) => {
+export const verifyemail = async (to, link) => {
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {

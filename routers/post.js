@@ -1,19 +1,17 @@
-const express = require("express")
-const router = express.Router()
+import express from "express";
+import propertyUpload from "../Middlewares/propertyUploader.js";
+import { 
+    createpost, 
+    getbycategory, 
+    getPost, 
+    removepost, 
+    updatePost, 
+    searchFilters, 
+    getallcategory 
+} from "../controllers/post.js";
+import { isAuthenticated } from "../Middlewares/authCheck.js";
 
-const propertyUpload = require("../Middlewares/propertyUploader")
-
-const {
-    createpost,
-    getbycategory,
-    getPost,
-    removepost,
-    updatePost,
-    searchFilters,
-    getallcategory
-}
-    = require("../controllers/post")
-const { isAuthenticated } = require("../Middlewares/authCheck")
+const router = express.Router();
 
 router.post("/propertypost", isAuthenticated, propertyUpload.fields([
     { name: "images", maxCount: 5 },
@@ -32,4 +30,5 @@ router.patch("/propertypost/:id", propertyUpload.fields([
     { name: 'videos', maxCount: 2 }
 ]), updatePost)
 router.post("/search/filters", searchFilters)
-module.exports = router
+
+export default router;
