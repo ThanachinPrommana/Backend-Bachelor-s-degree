@@ -202,10 +202,6 @@ const handleCategory = (where, categoryId) => {
   };
 };
 
-export const handleSellerRent = async (req, res) => {
-  // TODO
-};
-
 // =============== SEARCH HELPERS ===============
 const handleTextQuery = (where, query) => {
   return {
@@ -222,15 +218,16 @@ const handleTextQuery = (where, query) => {
 
 const handleLocation = (where, { province, district, subdistrict }) => {
   const locationFilters = {};
-  if (province) locationFilters.Province = province;
-  if (district) locationFilters.District = district;
-  if (subdistrict) locationFilters.Sub_district = subdistrict; // **แก้ชื่อฟิลด์ให้ตรงกับ Schema**
+  if (province) locationFilters.Province = { contains: province, mode: "insensitive" };
+  if (district) locationFilters.District = { contains: district, mode: "insensitive" };
+  if (subdistrict) locationFilters.Subdistrict = { contains: subdistrict, mode: "insensitive" };
 
   return {
     ...where,
     ...locationFilters,
   };
 };
+
 
 // ฟังก์ชันสำหรับจัดการเงื่อนไขช่วงราคา (Price Range)
 const handlePrice = (where, { minPrice, maxPrice }) => {
@@ -365,6 +362,7 @@ export const getPost = async (req, res) => {
         Status_post: true,
         PropertyUnit: {
           select: {
+            id:true,
             Unit_Number: true,
             Status: true
           }
