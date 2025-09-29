@@ -2,7 +2,12 @@ import prisma from "../config/prisma.js";
 //ยังไม่ใช้
 export const getuserNotifications = async (req, res) => {
     try {
-        const { userId } = req.session.user
+        if (!req.session.user) {
+            return res.status(401).json({ message: "Unauthorized: Please log in." });
+        }
+
+        // 2. ถ้ามี session ค่อยดึง userId ออกมาใช้งาน
+        const { userId } = req.session.user;
         if (!userId) {
             return res.status(400).json({ message: "Seller ID is required." })
         }

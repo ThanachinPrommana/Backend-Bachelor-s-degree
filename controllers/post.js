@@ -193,22 +193,13 @@ export const list = async (req, res) => {
   }
 };
 
-export const handlePrice = async (req, res, price) => {
-  // TODO
-};
-
-const handlecategory = async (req, res, categoryId) => {
-  try {
-    const ids = Array.isArray(categoryId) ? categoryId : [categoryId];
-    const products = await prisma.propertyPost.findMany({
-      where: { categoryId: { in: ids } },
-      include: { Image: true, Category: true },
-    });
-    res.json({ products });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ message: "Server Error" });
-  }
+const handleCategory = (where, categoryId) => {
+  // รองรับกรณีที่ categoryId อาจเป็น Array หรือค่าเดียว
+  const ids = Array.isArray(categoryId) ? categoryId : [categoryId];
+  return {
+    ...where,
+    categoryId: { in: ids },
+  };
 };
 
 export const handleSellerRent = async (req, res) => {
@@ -216,40 +207,90 @@ export const handleSellerRent = async (req, res) => {
 };
 
 // =============== SEARCH HELPERS ===============
-const handleQuery = async (req, res, query) => {
-  try {
-    const post = await prisma.propertyPost.findMany({
-      where: {
-        OR: [
-          { Property_Name: { contains: query, mode: "insensitive" } },
-          { Year_Built: { contains: query, mode: "insensitive" } },
-          { Description: { contains: query, mode: "insensitive" } },
-          { Address: { contains: query, mode: "insensitive" } },
-        ],
-      },
-      include: { Category: true, Image: true },
-    });
-    res.json({ post });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ message: "Server Error" });
-  }
+const handleTextQuery = (where, query) => {
+  return {
+    ...where,
+    OR: [
+      { Property_Name: { contains: query, mode: "insensitive" } },
+      { Description: { contains: query, mode: "insensitive" } },
+      { Address: { contains: query, mode: "insensitive" } },
+      // เพิ่ม Year_Built ถ้าต้องการค้นหาด้วย แต่ต้องแน่ใจว่า Type เป็น String
+      // { Year_Built: { contains: query, mode: "insensitive" } }, 
+    ],
+  };
+};
+
+const handleLocation = (where, { province, district, subdistrict }) => {
+  const locationFilters = {};
+  if (province) locationFilters.Province = province;
+  if (district) locationFilters.District = district;
+  if (subdistrict) locationFilters.Sub_district = subdistrict; // **แก้ชื่อฟิลด์ให้ตรงกับ Schema**
+
+  return {
+    ...where,
+    ...locationFilters,
+  };
+};
+
+// ฟังก์ชันสำหรับจัดการเงื่อนไขช่วงราคา (Price Range)
+const handlePrice = (where, { minPrice, maxPrice }) => {
+  const priceFilter = {};
+  if (minPrice) priceFilter.gte = parseInt(minPrice, 10);
+  if (maxPrice) priceFilter.lte = parseInt(maxPrice, 10);
+
+  return {
+    ...where,
+    Price: priceFilter,
+  };
 };
 
 export const searchFilters = async (req, res) => {
   try {
-    const { query, categoryId } = req.body;
+    // 1. ดึง Filter ทั้งหมดที่เป็นไปได้จาก req.body
+    const {
+      query,
+      categoryId,
+      province,
+      district,
+      subdistrict,
+      minPrice,
+      maxPrice,
+    } = req.body;
+
+    // 2. เริ่มต้น whereClause ด้วยเงื่อนไขพื้นฐานที่ต้องมีเสมอ
+    let whereClause = {
+      Status_post: "CONFIRMED",
+    };
+
+    // 3. เรียกใช้ Handle ต่างๆ เพื่อสร้างเงื่อนไขแบบไดนามิก
     if (query) {
-      console.log("query--->", query);
-      await handleQuery(req, res, query);
-      return;
+      whereClause = handleTextQuery(whereClause, query);
     }
     if (categoryId) {
-      console.log("categoryId--->", categoryId);
-      await handlecategory(req, res, categoryId);
-      return;
+      whereClause = handleCategory(whereClause, categoryId);
     }
-    res.json({ post: [] });
+    if (province || district || subdistrict) {
+      whereClause = handleLocation(whereClause, { province, district, subdistrict });
+    }
+    if (minPrice || maxPrice) {
+      whereClause = handlePrice(whereClause, { minPrice, maxPrice });
+    }
+
+    // 4. สั่งค้นหาข้อมูลด้วย whereClause ที่สร้างเสร็จสมบูรณ์
+    const posts = await prisma.propertyPost.findMany({
+      where: whereClause,
+      include: {
+        Image: true,
+        Category: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // 5. ส่งผลลัพธ์กลับไป
+    res.json({ posts });
+
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Server error" });
@@ -311,12 +352,24 @@ export const getPost = async (req, res) => {
         Additional_Amenities: true,
         Parking_Space: true,
         Sell_Rent: true,
-        user: { select: { First_name: true, Last_name: true } },
+        user: {
+          select: {
+            First_name: true, Last_name: true, 
+            image:true
+          }
+        },
         Phone: true,
         Latitude: true,
         Longitude: true,
         Other_related_expenses: true,
         Status_post: true,
+        PropertyUnit: {
+          select: {
+            Unit_Number: true,
+            Status: true
+          }
+        },
+        NumberOfUnits: true,
         Video: {
           select: {
             url: true,
@@ -518,5 +571,75 @@ export const getallcategory = async (req, res) => {
   } catch (err) {
     console.error("Error in getallcategory:", err);
     res.status(500).json({ message: "Failed to retrieve categories." });
+  }
+};
+
+export const getHomePagePosts = async (req, res) => {
+  try {
+    // 1. ดึงข้อมูลผู้ใช้จาก session ที่แนบมากับ request
+    const userFromSession = req.session.user;
+
+    // 2. ดึง userId ออกมาจากข้อมูลใน session (ถ้ามี)
+    const userId = userFromSession ? userFromSession.userId : null;
+
+    console.log("User ID from session:", userId);
+
+    let buyerPreferences = null;
+
+    // 3. ถ้ามี userId (ผู้ใช้ล็อกอินอยู่) ให้ไปดึงข้อมูลความชอบ
+    if (userId) {
+      buyerPreferences = await prisma.buyer.findUnique({
+        where: { userId: userId },
+        select: {
+          Preferred_Province: true,
+          Preferred_District: true,
+        }
+      });
+    }
+    console.log("Buyer Preferences:", buyerPreferences);
+
+    // 4. ดึงโพสต์ทั้งหมดที่เผยแพร่แล้ว
+    const allPosts = await prisma.propertyPost.findMany({
+      where: { Status_post: "CONFIRMED" },
+      select: {
+        id: true,
+        Province: true,
+        District: true,
+        Property_Name: true,
+        Price: true,
+        Image: {
+          take: 1,
+          select: {
+            url: true,
+            secure_url: true
+          }
+        },
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // 5. ถ้าผู้ใช้ไม่ได้ล็อกอิน หรือไม่มีข้อมูลความชอบ ให้ส่งโพสต์ทั้งหมดกลับไปเลย
+    if (!buyerPreferences) {
+      return res.json(allPosts);
+    }
+
+    // 6. จัดเรียงโพสต์ใหม่: โพสต์ที่ตรงกับความชอบจะขึ้นก่อน
+    allPosts.sort((postA, postB) => {
+      const aIsMatch = postA.Province === buyerPreferences.Preferred_Province &&
+        postA.District === buyerPreferences.Preferred_District;
+
+      const bIsMatch = postB.Province === buyerPreferences.Preferred_District &&
+        postB.District === buyerPreferences.Preferred_District;
+
+      if (aIsMatch && !bIsMatch) return -1; // A มาก่อน B
+      if (!aIsMatch && bIsMatch) return 1; // B มาก่อน A
+      return 0; // ไม่เปลี่ยนลำดับ
+    });
+
+    res.json(allPosts);
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server Error" });
   }
 };

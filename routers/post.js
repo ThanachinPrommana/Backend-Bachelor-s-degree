@@ -7,7 +7,8 @@ import {
     removepost, 
     updatePost, 
     searchFilters, 
-    getallcategory 
+    getallcategory,
+    getHomePagePosts
 } from "../controllers/post.js";
 import { isAuthenticated } from "../Middlewares/authCheck.js";
 
@@ -30,5 +31,5 @@ router.patch("/propertypost/:id", propertyUpload.fields([
     { name: 'videos', maxCount: 2 }
 ]), updatePost)
 router.post("/search/filters", searchFilters)
-
+router.get("/homepage/posts", getHomePagePosts);
 export default router;
