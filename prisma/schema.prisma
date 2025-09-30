@@ -165,10 +165,11 @@ model Buyer {
   userId                String                 @unique
   DateofBirth           DateTime?
   Occupation            String?
-  Monthly_Income        Float
-  Family_Size           Int
-  Preferred_Province    String
-  Preferred_District    String
+  Monthly_Income        Float?
+  Family_Size           Int?
+  Preferred_Province    String?
+  Preferred_District    String?
+  Preferred_Subdistrict String?
   Parking_Needs         Parking_Needs?
   Nearby_Facilities     Nearby_Facilities?
   Lifestyle_Preferences Lifestyle_Preferences?

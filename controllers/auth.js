@@ -1,4 +1,4 @@
-// controllers/auth.js  (ESM version)
+// controllers/auth.js (ESM version, finalized)
 
 import prisma from "../config/prisma.js";
 import bcrypt from "bcryptjs";
@@ -69,10 +69,7 @@ export const verifyandregister = async (req, res) => {
       Family_Size,
       Preferred_Province,
       Preferred_District,
-      National_ID, // reserved for future Seller path
-      Company_Name, // reserved
-      RealEstate_License, // reserved
-      Status, // reserved
+      Preferred_Subdistrict,
       Parking_Needs,
       Nearby_Facilities,
       Lifestyle_Preferences,
@@ -82,7 +79,6 @@ export const verifyandregister = async (req, res) => {
     if (!encodedToken)
       return res.status(400).json({ message: "Missing verification token" });
 
-    // ✅ Validate required fields for Buyer (ตาม schema.prisma)
     if (
       Monthly_Income == null ||
       Family_Size == null ||
@@ -99,7 +95,7 @@ export const verifyandregister = async (req, res) => {
     const decoded = jwt.verify(originalToken, process.env.SECRETKEY);
     const { Email, Password, Phone, First_name, Last_name } = decoded;
 
-    // Validate enums only if provided (เพื่อให้สอดคล้องกับฟอร์มที่ optional)
+    // Validate enums (optional)
     if (
       Parking_Needs &&
       !Object.values(ParkingNeedsEnum).includes(Parking_Needs)
@@ -123,14 +119,14 @@ export const verifyandregister = async (req, res) => {
         .json({ message: "Invalid Lifestyle_Preferences value" });
     }
 
-    // ป้องกันเคสกดลิงก์ซ้ำ
+    // กันกดซ้ำ
     const dup = await prisma.user.findFirst({ where: { Email } });
     if (dup) return res.status(400).json({ message: "Email already exists" });
 
     await prisma.user.create({
       data: {
         Email,
-        Password, // already hashed in preRegister
+        Password,
         Phone,
         First_name,
         Last_name,
@@ -139,10 +135,11 @@ export const verifyandregister = async (req, res) => {
           create: {
             DateofBirth: DateofBirth ? new Date(DateofBirth) : null,
             Occupation: Occupation || null,
-            Monthly_Income: Number(Monthly_Income), // ✅ required
-            Family_Size: Number(Family_Size),       // ✅ required
-            Preferred_Province,                     // ✅ required
-            Preferred_District,                     // ✅ required
+            Monthly_Income: Number(Monthly_Income),
+            Family_Size: Number(Family_Size),
+            Preferred_Province,
+            Preferred_District,
+            Preferred_Subdistrict: Preferred_Subdistrict || null,
             Parking_Needs: Parking_Needs || null,
             Nearby_Facilities: Nearby_Facilities || null,
             Lifestyle_Preferences: Lifestyle_Preferences || null,
@@ -170,8 +167,7 @@ export const login = async (req, res) => {
     if (!user) return res.status(400).json({ message: "Email not found" });
 
     const is_Match = await bcrypt.compare(Password, user.Password);
-    if (!is_Match)
-      return res.status(400).json({ message: "Password invalid" });
+    if (!is_Match) return res.status(400).json({ message: "Password invalid" });
 
     const payload = {
       userId: user.id,
@@ -199,10 +195,6 @@ export const login = async (req, res) => {
           .status(500)
           .json({ message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ" });
       }
-      console.log(
-        "Login successful, session created for user:",
-        req.session.user.userId
-      );
       return res.status(200).json({
         message: "Login Success",
         user: req.session.user,
@@ -223,7 +215,6 @@ export const forgotPassword = async (req, res) => {
     const user = await prisma.user.findFirst({ where: { Email } });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // ให้ JWT และ DB token หมดอายุสอดคล้องกัน = 10 นาที
     const token = jwt.sign(
       { userId: user.id, email: user.Email },
       process.env.SECRETKEY,
@@ -258,8 +249,7 @@ export const resetPassword = async (req, res) => {
     const tokenEntry = await prisma.passwordResetToken.findFirst({
       where: { token },
     });
-    if (!tokenEntry)
-      return res.status(400).json({ message: "Token invalid" });
+    if (!tokenEntry) return res.status(400).json({ message: "Token invalid" });
     if (tokenEntry.expiresAt < new Date())
       return res.status(400).json({ message: "Token expired" });
 
@@ -269,7 +259,6 @@ export const resetPassword = async (req, res) => {
       data: { Password: hashed },
     });
 
-    // หาก schema ไม่ได้ unique ที่ field token ให้ใช้ deleteMany แทน
     await prisma.passwordResetToken.deleteMany({ where: { token } });
 
     return res.json({ message: "Password updated" });
@@ -296,58 +285,22 @@ export const getProfile = async (req, res) => {
             RealEstate_License: true,
             Status: true,
             nationalIdImage: true,
-            DateTimeSlot: true,
-            Booking: true,
           },
         },
         Buyer: {
           select: {
+            id: true,
             DateofBirth: true,
             Occupation: true,
             Monthly_Income: true,
             Family_Size: true,
-            Preferred_Province: true,   // ✅ เพิ่มให้ครบ
+            Preferred_Province: true,
             Preferred_District: true,
+            Preferred_Subdistrict: true,
             Parking_Needs: true,
             Nearby_Facilities: true,
             Lifestyle_Preferences: true,
-            Booking: true,
-          },
-        },
-        Deposit: {
-          select: {
-            id: true,
-            Deposit_Status: true,
-            Deposit_Amount: true,
-            Post: { select: { Property_Name: true } },
-          },
-        },
-        Notification: true,
-        PropertyPost: {
-          select: {
-            id: true,
-            Property_Name: true,
-            Price: true,
-            Province: true,
-            Subdistrict: true,
-            District: true,
-            Address: true,
-            Deposit_Amount: true,
-            Sell_Rent: true,
-            Image: true,
-            Deposit: true,
-            sellerId: true,
-          },
-        },
-        DocumentUpload: {
-          orderBy: { createdAt: "desc" },
-          select: {
-            id: true,
-            DocumentName: true,
-            Review_Status: true,
-            DocumentUrl: true,
-            createdAt: true,
-            User: { select: { First_name: true, Last_name: true } },
+            Special_Requirements: true,
           },
         },
       },
@@ -356,7 +309,7 @@ export const getProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.Password) delete user.Password;
 
-    // Sync session กับข้อมูลล่าสุดจาก DB (กัน 403 ตอนสร้างโพสต์/สิทธิ์)
+    // Sync session
     req.session.user = {
       userId: user.id,
       Email: user.Email,
@@ -372,7 +325,6 @@ export const getProfile = async (req, res) => {
       if (err) console.error("Session re-save error in getProfile:", err);
     });
 
-    console.log("Successfully fetched profile for user:", user.id);
     return res.status(200).json({ user });
   } catch (error) {
     console.error("getProfile error:", error);
@@ -382,7 +334,6 @@ export const getProfile = async (req, res) => {
 
 // ---------- logout ----------
 export const logout = (req, res) => {
-  console.log("Logout route called");
   try {
     req.session.destroy((err) => {
       if (err) {
@@ -391,7 +342,6 @@ export const logout = (req, res) => {
           .status(500)
           .json({ message: "Could not log out, please try again." });
       }
-      console.log("Session destroyed");
       res.clearCookie("connect.sid", { path: "/" });
       return res.status(200).json({ message: "Logout successful" });
     });
@@ -424,13 +374,7 @@ export const registerSeller = async (req, res) => {
           OR: [{ National_ID }, { RealEstate_License }, { userId }],
         },
       });
-      if (existingSeller) {
-        if (existingSeller.userId === userId)
-          throw new Error("This user is already registered as a seller.");
-        if (existingSeller.National_ID === National_ID)
-          throw new Error("This National ID is already registered.");
-        throw new Error("This Real Estate License is already registered.");
-      }
+      if (existingSeller) throw new Error("Seller already registered");
 
       const newSeller = await tx.seller.create({
         data: {
@@ -439,8 +383,8 @@ export const registerSeller = async (req, res) => {
           Company_Name,
           RealEstate_License,
           Status: "PENDING",
-          nationalIdImage: req.file.path, // Cloudinary URL
-          publicId: req.file.filename, // Cloudinary public ID
+          nationalIdImage: req.file.path,
+          publicId: req.file.filename,
         },
       });
 
@@ -452,17 +396,13 @@ export const registerSeller = async (req, res) => {
       return newSeller;
     });
 
-    // Update session -> เป็น Seller ทันที
     req.session.user = {
       ...(req.session.user || {}),
       userId,
       userType: "Seller",
       sellerId: result.id,
     };
-    req.session.save((err) => {
-      if (err)
-        console.error("Session save error after registerSeller:", err);
-    });
+    req.session.save();
 
     return res.status(201).json({
       message:

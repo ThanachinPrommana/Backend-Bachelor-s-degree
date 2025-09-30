@@ -35,6 +35,7 @@ function assertOwnerOrThrow(reqUserId, targetUserId) {
  * - ถ้าไม่ส่ง :userId มาจะดึงของตัวเองจาก token/session
  * - รวม logic กรอง relatedProcess แบบไฟล์ที่จะ merge
  * - มี pagination + normalize fields แบบของเดิม
+ * - ✅ เพิ่ม cookie hint (unreadCount/lastUpdated) สำหรับ FE อ่านเร็ว ๆ
  */
 export const getuserNotifications = async (req, res) => {
   try {
@@ -89,11 +90,34 @@ export const getuserNotifications = async (req, res) => {
       readAt: n.readAt ?? null,
     }));
 
-    res.json({
+    // ✅ คำนวณค่า hint สำหรับคุกกี้
+    const unreadCount = rows.reduce(
+      (acc, n) => acc + ((n.Status ?? n.status) === "UNREAD" ? 1 : 0),
+      0
+    );
+    const lastUpdated = (rows[0]?.createdAt ?? new Date()).toISOString();
+
+    // ✅ เขียนคุกกี้ noti_hint (FE อ่านได้ → httpOnly: false)
+    // หมายเหตุ:
+    // - dev: ใช้ sameSite=Lax + secure=false ก็พอ
+    // - cross-subdomain/prod: ใช้ sameSite=None + secure=true และอาจตั้ง domain
+    const sameSite = (process.env.COOKIE_SAMESITE || "Lax");
+    res.cookie("noti_hint", encodeURIComponent(JSON.stringify({ unreadCount, lastUpdated })), {
+      httpOnly: false,
+      sameSite,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 5 * 60 * 1000, // 5 นาทีเป็น hint
+      // domain: process.env.COOKIE_DOMAIN || undefined, // ตั้งถ้าข้ามซับโดเมนจริง
+    });
+
+    return res.json({
       notifications,
       total,
       page: Number(page) || 1,
       pageSize: take,
+      unreadCount,
+      lastUpdated,
     });
   } catch (err) {
     console.error("getuserNotifications error:", err);

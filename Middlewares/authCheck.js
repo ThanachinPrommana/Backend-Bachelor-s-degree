@@ -1,18 +1,17 @@
-// Middlewares/authCheck.js (merged & reconciled, ESM)
+// middlewares/authCheck.js (ESM, finalized)
 
 import jwt from "jsonwebtoken";
-import prisma from "../config/prisma.js"; // ใช้ instance กลางของโปรเจกต์
+import prisma from "../config/prisma.js";
 import multer from "multer";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import cloudinary from "../utils/cloudinary.js";
 
 /* ============================
- *  Multer / Cloudinary Upload
- *  - กำหนดครั้งเดียว/ใช้ซ้ำ
+ * Multer / Cloudinary Upload
  * ============================ */
 const storage = new CloudinaryStorage({
   cloudinary,
-  params: async (req, file) => {
+  params: async (_req, file) => {
     if (file.mimetype.startsWith("image")) {
       return {
         folder: "property_images",
@@ -27,12 +26,12 @@ const storage = new CloudinaryStorage({
         allowed_formats: ["mp4", "mov", "avi", "mkv"],
       };
     }
-    // ให้ fileFilter เป็นตัวบล็อกไฟล์ที่ไม่รองรับ
+    // ปล่อยให้ fileFilter เป็นคนบล็อกไฟล์ที่ไม่ใช่ image/video
     return { folder: "raw_uploads", resource_type: "raw" };
   },
 });
 
-const fileFilter = (req, file, cb) => {
+const fileFilter = (_req, file, cb) => {
   if (file.mimetype.startsWith("image") || file.mimetype.startsWith("video")) {
     cb(null, true);
   } else {
@@ -43,21 +42,19 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 1024 * 1024 * 100 }, // 100MB
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
 });
 
 /* ============================
- *  JWT Auth (Bearer)
+ * JWT Auth (ถ้าบาง route ต้องใช้ Bearer)
  * ============================ */
 const authCheck = async (req, res, next) => {
   try {
     const auth = req.headers.authorization || "";
-    const token = auth.startsWith("Bearer ") ? auth.split(" ")[1] : null;
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
     if (!token) return res.status(401).json({ message: "No token provided" });
 
-    // ใช้ SECRETKEY ให้ตรงกับ .env ปัจจุบัน
     const decoded = jwt.verify(token, process.env.SECRETKEY);
-
     const user = await prisma.user.findUnique({
       where: { id: String(decoded.id) },
       select: { id: true, Email: true, userType: true },
@@ -66,23 +63,25 @@ const authCheck = async (req, res, next) => {
 
     req.user = {
       id: String(user.id),
-      email: user.Email, // ฟิลด์ใน schema คือ Email (ตัวใหญ่)
+      email: user.Email,
       userType: user.userType,
     };
     next();
   } catch (err) {
-    console.error("[authCheck] error:", err?.message);
+    console.error("[authCheck] error:", err?.message || err);
     res.status(401).json({ message: "Invalid or expired token" });
   }
 };
 
 /* ============================
- *  Session Auth
+ * Session Auth (หลักสำหรับเว็บของคุณ)
  * ============================ */
 const isAuthenticated = (req, res, next) => {
   try {
     if (!req.session) {
-      console.error("CRITICAL: req.session is undefined");
+      console.error(
+        "CRITICAL: req.session is undefined (check express-session setup)"
+      );
       return res
         .status(500)
         .json({ message: "Session middleware is not configured correctly." });
@@ -95,21 +94,22 @@ const isAuthenticated = (req, res, next) => {
       return res.status(401).json({ message: "You are not logged in" });
     }
 
-    // inject user (ช่วยให้ downstream middlewares ใช้รูปแบบเดียวกับ authCheck)
+    // inject ให้ downstream ใช้รูปแบบเดียวกันกับ JWT
     req.user = {
       id: String(uid),
       email: sessUser.Email ?? sessUser.email ?? null,
       userType: sessUser.userType,
     };
-    next();
+
+    return next();
   } catch (err) {
-    console.error("[isAuthenticated] error:", err?.message);
-    res.status(401).json({ message: "Unauthorized" });
+    console.error("[isAuthenticated] error:", err?.message || err);
+    return res.status(401).json({ message: "Unauthorized" });
   }
 };
 
 /* ============================
- *  Role Guard: Seller only
+ * Role Guards
  * ============================ */
 const isSeller = (req, res, next) => {
   const userType = req.session?.user?.userType ?? req.user?.userType;
@@ -119,6 +119,16 @@ const isSeller = (req, res, next) => {
     .json({ message: "Forbidden: คุณไม่มีสิทธิ์ในการเข้าถึงส่วนนี้" });
 };
 
-// ✅ exports ให้ router ใช้งานได้แน่นอน
-export { authCheck, isAuthenticated, isSeller, upload };
-// eg. upload.single("nationalIdImage"), upload.fields([{name:"images"},{name:"videos"}])
+const isAdmin = (req, res, next) => {
+  const userType = req.session?.user?.userType ?? req.user?.userType;
+  if (userType === "Admin") return next();
+  return res.status(403).json({ message: "Forbidden: Admin only" });
+};
+
+/* ============================
+ * Exports
+ * ============================ */
+export { authCheck, isAuthenticated, isSeller, isAdmin, upload };
+// ตัวอย่างการใช้:
+// router.patch("/profile", isAuthenticated, updateUser);
+// router.post("/upload", isAuthenticated, upload.single("image"), controller);
