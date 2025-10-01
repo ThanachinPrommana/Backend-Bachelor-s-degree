@@ -222,9 +222,15 @@ const handleTextQuery = (where, query) => {
 
 const handleLocation = (where, { province, district, subdistrict }) => {
   const locationFilters = {};
-  if (province) locationFilters.Province = province;
-  if (district) locationFilters.District = district;
-  if (subdistrict) locationFilters.Sub_district = subdistrict; // **แก้ชื่อฟิลด์ให้ตรงกับ Schema**
+  if (province) locationFilters.Province = {
+    contains:province,mode:"insensitive"
+  };
+  if (district) locationFilters.District = {
+    contains:district,mode:"insensitive"
+  };
+  if (subdistrict) locationFilters.Subdistrict = {
+    contains:subdistrict,mode:"insensitive"
+  }; // **แก้ชื่อฟิลด์ให้ตรงกับ Schema**
 
   return {
     ...where,
@@ -365,6 +371,7 @@ export const getPost = async (req, res) => {
         Status_post: true,
         PropertyUnit: {
           select: {
+            id:true,
             Unit_Number: true,
             Status: true
           }
