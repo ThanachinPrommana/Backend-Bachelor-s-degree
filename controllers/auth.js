@@ -342,7 +342,7 @@ export const getProfile = async (req, res) => {
             Status: true,
             nationalIdImage: true,
             DateTimeSlot: true,
-            Booking: true
+            Booking: true,
           }
         },
         Buyer: {

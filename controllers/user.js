@@ -1758,6 +1758,70 @@ export const confirmedSlipBySeller = async (req, res) => {
   }
 };
 
+export const searchFilterDateTimeSlot = async (req, res) => {
+  try {
+    const user = req.session.user;
+    if (!user || !user.userId) {
+      return res.status(401).json({ success: false, message: 'กรุณาเข้าสู่ระบบก่อน' });
+    }
+    const sellerId = user.sellerId;
+    if (!sellerId) {
+      return res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์เข้าถึงข้อมูลนี้' });
+    }
+    console.log("ID seller:", sellerId)
+    const { q, date, isBooked } = req.body
+
+    let whereClause = {
+      sellerId: sellerId
+    }
+
+    if (q) {
+      whereClause.Post = {
+        Property_Name: {
+          contains: q,
+          mode: 'insensitive'
+        },
+
+      }
+    }
+
+    if (date) {
+      const startDate = new Date(date)
+      startDate.setUTCHours(0, 0, 0, 0)
+
+      const endDate = new Date(startDate)
+      endDate.setDate(startDate.getDate() + 1);
+
+      whereClause.startTime = {
+        gte:startDate,
+        lt:endDate
+      }
+    }
+
+    if(isBooked !== undefined && isBooked !== null){
+      whereClause.isBooked = (isBooked === true || String(isBooked).toLowerCase() === "true")
+    }
+
+    const dateTimeSlots = await prisma.dateTimeSlot.findMany({
+      where: whereClause,
+      include:{
+        Post:true
+      },
+      orderBy:{
+        startTime:"asc"
+      }
+    })
+
+    res.status(200).json({
+      message: "Success",
+      data: dateTimeSlots
+    })
+
+  } catch (err) {
+    console.error("Error in searchFilterDateTimeSlot:", err);
+    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' });
+  }
+}
 
 
 
