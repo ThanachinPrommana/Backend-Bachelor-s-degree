@@ -584,7 +584,7 @@ export const useruploadDocument = async (req, res) => {
     }
     const userId = loggedInUser.userId; // <-- ใช้ userId ที่ถูกต้อง
 
-    const { typeId, DocumentName, postId, unitId } = req.body;
+    const {  DocumentName, postId, unitId } = req.body;
     // const {id} = req.params
     const file = req.file;
     if (!file) {
@@ -619,7 +619,6 @@ export const useruploadDocument = async (req, res) => {
       const document = await tx.documentUpload.create({
         data: {
           userId: userId,
-          typeId,
           DocumentName,
           DocumentUrl: documentUrl,
           CloudinaryPublicId: publicId,

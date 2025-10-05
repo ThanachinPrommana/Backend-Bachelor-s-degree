@@ -324,6 +324,7 @@ export const getPost = async (req, res) => {
     const post = await prisma.propertyPost.findUnique({
       where: { id },
       select: {
+        id:true,
         floor: true, // ✅ จำนวนชั้น
         Property_Name: true,
         Province: true,

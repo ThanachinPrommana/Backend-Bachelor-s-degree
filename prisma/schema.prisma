@@ -141,7 +141,7 @@ model User {
   id                 String               @id @default(cuid())
   First_name         String
   Last_name          String
-  Email              String
+  Email              String               @unique
   Phone              String
   Password           String
   userType           UserType             @default(Buyer)

@@ -112,7 +112,7 @@ router.patch("/update/status/deposit/:depositId", isAuthenticated, updateDeposit
 // Documents
 // -------------------------------------------------------------
 
-router.post("/document", uploadDocument.single("document"), useruploadDocument);
+router.post("/document",isAuthenticated,uploadDocument.single("document"), useruploadDocument);
 
 //DateSlot
 router.post("/seller/slot", isAuthenticated, isSeller, createDateTimeSlot);

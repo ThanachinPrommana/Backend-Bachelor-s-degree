@@ -6,16 +6,19 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon server.js"
+    "start": "cross-env NODE_ENV=development nodemon server.js",
+    "prod": "cross-env NODE_ENV=production node server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@adminjs/bundler": "^3.0.0",
+    "@adminjs/design-system": "^4.1.1",
     "@adminjs/express": "^6.1.1",
     "@adminjs/prisma": "^5.0.4",
     "@prisma/client": "^6.16.2",
-    "adminjs": "^7.8.0",
+    "adminjs": "^7.8.17",
     "bcryptjs": "2.4.3",
     "cloudinary": "1.41.3",
     "cookie-parser": "1.4.6",
@@ -30,10 +33,16 @@
     "multer-storage-cloudinary": "4.0.0",
     "node-cron": "2.0.3",
     "nodemailer": "6.9.14",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "stripe": "18.5.0",
     "twilio": "5.2.0"
   },
   "devDependencies": {
+    "@babel/core": "^7.28.4",
+    "@babel/preset-env": "^7.28.3",
+    "@babel/preset-react": "^7.27.1",
+    "cross-env": "^10.1.0",
     "nodemon": "3.1.4",
     "prisma": "^6.16.2"
   },
