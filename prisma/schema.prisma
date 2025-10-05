@@ -8,7 +8,11 @@ datasource db {
   directUrl = env("DATABASE_URL_MIGRATE")
 }
 
-// Enums ใช้ได้เหมือนเดิม
+/**
+ * =====================
+ * Enums (เหมือนเดิม)
+ * =====================
+ */
 enum UserType {
   Buyer
   Seller
@@ -87,12 +91,6 @@ enum Sell_Rent {
   RENT
 }
 
-// enum Other_related_expenses {
-//   Ownership_transfer_fee
-//   House_insurance_fee
-//   Common_area_feeF
-// }
-
 enum Nearby_Facilities {
   BTS_MRT
   School
@@ -116,17 +114,17 @@ enum Lifestyle_Preferences {
 
 enum Status_post {
   PENDING // รอแอดมินอนุมัติ (สถานะเริ่มต้น)
-  CONFIRMED // อนุมัติแล้ว (เทียบเท่ากับสถานะ "AVAILABLE" ที่เราคุยกัน)
+  CONFIRMED // อนุมัติแล้ว (เทียบเท่ากับ "AVAILABLE")
   SOLD // ขายไปแล้ว
   HIDDEN // ผู้ขายซ่อนไว้ชั่วคราว
   REJECTED // แอดมินไม่อนุมัติ
 }
 
 enum BookingStatus {
-  PENDING_PAYMENT // รอจ่ายมัดจำ (ขั้นตอนแรกสุด)
-  CONFIRMED // จ่ายมัดจำแล้ว, ยืนยันนัดหมาย (รอจ่ายส่วนที่เหลือ)
-  PENDING_FINAL_VERIFICATION // อัปโหลดสลิปสุดท้ายแล้ว, รอผู้ขายตรวจสอบ
-  COMPLETED // กระบวนการเสร็จสมบูรณ์
+  PENDING_PAYMENT // รอจ่ายมัดจำ (ขั้นแรก)
+  CONFIRMED // จ่ายมัดจำแล้ว
+  PENDING_FINAL_VERIFICATION // รอสรุปยอดสุดท้าย
+  COMPLETED // เสร็จสมบูรณ์
   CANCELLED
 }
 
@@ -137,11 +135,17 @@ enum UnitStatus {
   PENDING // กำลังดำเนินการ
 }
 
+/**
+ * =====================
+ * Models
+ * =====================
+ */
+
 model User {
   id                 String               @id @default(cuid())
   First_name         String
   Last_name          String
-  Email              String
+  Email              String               @unique // 🔒 ป้องกันซ้ำ + คิวรีเร็ว
   Phone              String
   Password           String
   userType           UserType             @default(Buyer)
@@ -177,6 +181,8 @@ model Buyer {
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   Booking               Booking[]
+
+  @@index([userId]) // ช่วยเวลา join จากฝั่ง User -> Buyer
 }
 
 model Seller {
@@ -196,6 +202,9 @@ model Seller {
   DateTimeSlot       DateTimeSlot[]
   Booking            Booking[]
   PropertyPost       PropertyPost[]
+
+  @@index([userId])
+  @@index([Status])
 }
 
 model Category {
@@ -204,17 +213,20 @@ model Category {
   PropertyPost PropertyPost[]
 }
 
-//เอา sellerId และ location ออก
+// โพสต์อสังหา
 model PropertyPost {
-  id                     String                      @id @default(cuid())
-  Property_Name          String
-  Price                  Float
-  Usable_Area            Float
-  Land_Size              Float
-  Bedrooms               Int
-  Bathroom               Int
-  Description            String
-  Deposit_Amount         Float? //deposit sell
+  id            String @id @default(cuid())
+  Property_Name String
+  Price         Float
+  Usable_Area   Float
+  Land_Size     Float
+  Bedrooms      Int
+  Bathroom      Int
+  Description   String
+
+  Deposit_Amount Float? // สำหรับขาย (ดาวน์)
+  Deposit_Rent   Float? // ✅ เพิ่มใหม่: สำหรับเช่า (มัดจำ)
+
   Contract_Seller        String?
   LinkMap                String?
   Latitude               Float?
@@ -225,8 +237,8 @@ model PropertyPost {
   Address                String
   Total_Rooms            Int?
   Year_Built             String?
-  Nearby_Landmarks       Nearby_Landmarks_list[]
-  Additional_Amenities   Additional_Amenities_list[]
+  Nearby_Landmarks       Nearby_Landmarks_list[]     @default([])
+  Additional_Amenities   Additional_Amenities_list[] @default([])
   Parking_Space          Int?
   Sell_Rent              Sell_Rent
   Other_related_expenses String?
@@ -236,13 +248,10 @@ model PropertyPost {
   Phone                  String
   floor                  Int?
   NumberOfUnits          Int?                        @default(1)
-  // Deposit_Rent           Float?
   Interest               Float?
   Status_post            Status_post                 @default(PENDING)
   user                   User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId                 String
-  // Propertytype           PropertyType?              @relation(fields: [propertyTypeId], references: [id])
-  // propertyTypeId         String?
   seller                 Seller?                     @relation(fields: [sellerId], references: [id])
   sellerId               String?
   Category               Category?                   @relation(fields: [categoryId], references: [id])
@@ -256,6 +265,11 @@ model PropertyPost {
   Video                  Video[]
   DateTimeSlot           DateTimeSlot[]
   PropertyUnit           PropertyUnit[]
+
+  @@index([sellerId, createdAt])
+  @@index([userId, createdAt])
+  @@index([Status_post, createdAt])
+  @@index([Province, District, Subdistrict])
 }
 
 model PropertyUnit {
@@ -266,25 +280,31 @@ model PropertyUnit {
   propertyPostId String
   DocumentUpload DocumentUpload[]
   Booking        Booking?
+
+  // 🛡️ กันยูนิตซ้ำในโพสต์เดียวกัน + เร่งค้นหา
+  @@unique([propertyPostId, Unit_Number])
+  @@index([propertyPostId, Status])
 }
 
-//เปรียบเหมือนตะกร้าสินค้า
+// “ตะกร้ามัดจำ”
 model Deposit {
   id             String          @id @default(cuid())
   Post           PropertyPost    @relation(fields: [postId], references: [id], onDelete: Cascade)
   postId         String
-  User           User?           @relation(fields: [userId], references: [id])
+  User           User?           @relation(fields: [userId], references: [id], onDelete: SetNull) // 🛡️ เก็บประวัติแม้ผู้ใช้ถูกลบ
   userId         String?
   Deposit_Status Status_Disposit
-  Deposit_Amount Float
+  Deposit_Amount Float // 💰 ใช้ Float
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
   DocumentUpload DocumentUpload[]
+
+  @@index([userId, createdAt])
+  @@index([postId, Deposit_Status])
 }
 
-//ใช้  
-
+// เอกสารอัปโหลด
 model DocumentUpload {
   id                 String        @id @default(cuid())
   DocumentName       String
@@ -298,12 +318,17 @@ model DocumentUpload {
   userId             String
   Deposit            Deposit?      @relation(fields: [depositId], references: [id])
   depositId          String?
-  Post               PropertyPost? @relation(fields: [postId], references: [id])
+  Post               PropertyPost? @relation(fields: [postId], references: [id], onDelete: SetNull) // ✅ ลบโพสต์ → เก็บเอกสารไว้
   postId             String?
-  unitId             String? // ID ของยูนิตย่อยที่เกี่ยวข้อง (ถ้ามี)
+  unitId             String?
   unit               PropertyUnit? @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  @@index([postId])
+  @@index([userId])
+  @@index([unitId])
 }
 
+// การชำระเงิน
 model Payment {
   id             String         @id @default(cuid())
   User           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -311,31 +336,15 @@ model Payment {
   PropertyPost   PropertyPost   @relation(fields: [postId], references: [id])
   postId         String
   PaymentType    PaymentType
-  Payment_Amount Float
+  Payment_Amount Float // 💰 ใช้ Float
   Payment_Slip   String
   Status         Status_payment
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([postId, Status])
 }
-
-//Contract สัญญาซื้อขาย url
-
-// model Contract {
-//   id                String         @id @default(cuid())
-//   buyerId           String
-//   sellerId          String
-//   BuyerContractDoc  String?
-//   BuyerUploadDate   DateTime?
-//   SellerContractDoc String?
-//   SellerUploadDate  DateTime?
-//   contractStatus    ContractStatus
-//   bookingId         String         @unique
-//   booking           Booking        @relation(fields: [bookingId], references: [id])
-//   buyer             Buyer          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-//   seller            Seller         @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-//   userId            String?
-//   User              User?          @relation(fields: [userId], references: [id])
-// }
 
 model Notification {
   id             String             @id @default(cuid())
@@ -361,10 +370,12 @@ model Image {
   public_id      String?
   url            String
   secure_url     String?
-  PropertyPost   PropertyPost? @relation(fields: [propertyPostId], references: [id])
+  PropertyPost   PropertyPost? @relation(fields: [propertyPostId], references: [id], onDelete: Cascade) // 🧹 ลบโพสต์แล้วลบรูป
   propertyPostId String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+
+  @@index([propertyPostId])
 }
 
 model PasswordResetToken {
@@ -374,6 +385,8 @@ model PasswordResetToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
 }
 
 model Video {
@@ -386,6 +399,8 @@ model Video {
   postId     String?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
+
+  @@index([postId])
 }
 
 model DateTimeSlot {
@@ -400,6 +415,11 @@ model DateTimeSlot {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   Booking   Booking?
+
+  // 🔎 เร่งคิวรีสร้าง/ค้นหา slot
+  @@index([sellerId, startTime])
+  @@index([postId, startTime])
+  @@index([isBooked])
 }
 
 model Booking {
@@ -410,14 +430,18 @@ model Booking {
   sellerId            String
   dateTimeSlot        DateTimeSlot  @relation(fields: [dateTimeSlotId], references: [id])
   dateTimeSlotId      String        @unique
-  isReminderSent      Boolean       @default(false) // เปลี่ยนชื่อจาก isNotificationSent เพื่อความชัดเจน (แจ้งเตือนล่วงหน้า)
+  isReminderSent      Boolean       @default(false)
   isDayOfAlertSent    Boolean       @default(false)
   isAtTimeAlertSent   Boolean       @default(false)
-  finalSlipUrl        String? // URL ของสลิปสุดท้ายจาก Cloudinary
-  finalSlipUploadDate DateTime? // วันที่อัปโหลดสลิปสุดท้าย
-  bookingStatus       BookingStatus @default(CONFIRMED) // สถานะโดยรวมของการจอง
+  finalSlipUrl        String?
+  finalSlipUploadDate DateTime?
+  bookingStatus       BookingStatus @default(CONFIRMED)
   propertyUnit        PropertyUnit? @relation(fields: [propertyUnitId], references: [id])
   propertyUnitId      String?       @unique
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
+
+  @@index([buyerId, createdAt])
+  @@index([sellerId, createdAt])
+  @@index([bookingStatus, createdAt])
 }

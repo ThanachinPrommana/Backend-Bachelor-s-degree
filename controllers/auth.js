@@ -1,4 +1,4 @@
-// controllers/auth.js (ESM version, finalized)
+// controllers/auth.js (Merged ESM version)
 
 import prisma from "../config/prisma.js";
 import bcrypt from "bcryptjs";
@@ -10,7 +10,7 @@ import {
 } from "@prisma/client";
 import { sendResetEmail, verifyemail } from "../utils/email.js";
 
-// ---------- Helpers ----------
+/* ========== Helpers ========== */
 const getSessionUserId = (req) => {
   const u = req.session?.user;
   return u?.userId ?? u?.id ?? null; // รองรับทั้ง userId และ id
@@ -19,7 +19,7 @@ const getSessionUserId = (req) => {
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.replace(/\/+$/, "") || "http://localhost:5173";
 
-// ---------- preRegister ----------
+/* ========== preRegister ========== */
 export const preRegister = async (req, res) => {
   try {
     const { Email, Password, Phone, First_name, Last_name } = req.body;
@@ -58,7 +58,7 @@ export const preRegister = async (req, res) => {
   }
 };
 
-// ---------- verify & register (Buyer) ----------
+/* ========== verify & register (Buyer) ========== */
 export const verifyandregister = async (req, res) => {
   try {
     const {
@@ -79,6 +79,7 @@ export const verifyandregister = async (req, res) => {
     if (!encodedToken)
       return res.status(400).json({ message: "Missing verification token" });
 
+    // ฟิลด์ Buyer สำคัญตามสคีมาล่าสุด (กันข้อมูลไม่ครบ)
     if (
       Monthly_Income == null ||
       Family_Size == null ||
@@ -95,7 +96,11 @@ export const verifyandregister = async (req, res) => {
     const decoded = jwt.verify(originalToken, process.env.SECRETKEY);
     const { Email, Password, Phone, First_name, Last_name } = decoded;
 
-    // Validate enums (optional)
+    // ป้องกันสมัครซ้ำ (กันกดลิงก์ยืนยันมากกว่า 1 ครั้ง)
+    const dup = await prisma.user.findFirst({ where: { Email } });
+    if (dup) return res.status(400).json({ message: "Email already exists" });
+
+    // Validate enum แบบ optional (ถ้าไม่ส่งมา = ไม่เช็ค)
     if (
       Parking_Needs &&
       !Object.values(ParkingNeedsEnum).includes(Parking_Needs)
@@ -119,14 +124,10 @@ export const verifyandregister = async (req, res) => {
         .json({ message: "Invalid Lifestyle_Preferences value" });
     }
 
-    // กันกดซ้ำ
-    const dup = await prisma.user.findFirst({ where: { Email } });
-    if (dup) return res.status(400).json({ message: "Email already exists" });
-
     await prisma.user.create({
       data: {
         Email,
-        Password,
+        Password, // hashed จาก preRegister ที่ฝังมาใน token
         Phone,
         First_name,
         Last_name,
@@ -156,7 +157,7 @@ export const verifyandregister = async (req, res) => {
   }
 };
 
-// ---------- login ----------
+/* ========== login ========== */
 export const login = async (req, res) => {
   try {
     const { Email, Password } = req.body;
@@ -206,7 +207,7 @@ export const login = async (req, res) => {
   }
 };
 
-// ---------- forgot password ----------
+/* ========== forgot password ========== */
 export const forgotPassword = async (req, res) => {
   try {
     const { Email } = req.body;
@@ -218,7 +219,7 @@ export const forgotPassword = async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, email: user.Email },
       process.env.SECRETKEY,
-      { expiresIn: "10m" }
+      { expiresIn: "10m" } // ให้ตรงกับ expiresAt ที่บันทึก 10 นาที
     );
 
     await prisma.passwordResetToken.create({
@@ -239,7 +240,7 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
-// ---------- reset password ----------
+/* ========== reset password ========== */
 export const resetPassword = async (req, res) => {
   try {
     const { token, Password } = req.body;
@@ -259,6 +260,7 @@ export const resetPassword = async (req, res) => {
       data: { Password: hashed },
     });
 
+    // ใช้ deleteMany เผื่อกรณี token ซ้ำ/หลงเหลือ
     await prisma.passwordResetToken.deleteMany({ where: { token } });
 
     return res.json({ message: "Password updated" });
@@ -268,7 +270,7 @@ export const resetPassword = async (req, res) => {
   }
 };
 
-// ---------- getProfile ----------
+/* ========== getProfile ========== */
 export const getProfile = async (req, res) => {
   try {
     const id = getSessionUserId(req);
@@ -285,6 +287,9 @@ export const getProfile = async (req, res) => {
             RealEstate_License: true,
             Status: true,
             nationalIdImage: true,
+            // จากไฟล์ที่จะ merge:
+            DateTimeSlot: true,
+            Booking: true,
           },
         },
         Buyer: {
@@ -301,6 +306,50 @@ export const getProfile = async (req, res) => {
             Nearby_Facilities: true,
             Lifestyle_Preferences: true,
             Special_Requirements: true,
+            // จากไฟล์ที่จะ merge:
+            Booking: true,
+          },
+        },
+        // จากไฟล์ที่จะ merge:
+        Deposit: {
+          select: {
+            id: true,
+            Deposit_Status: true,
+            Deposit_Amount: true,
+            Post: { select: { Property_Name: true } },
+          },
+        },
+        Notification: true,
+        PropertyPost: {
+          select: {
+            id: true,
+            Property_Name: true,
+            Price: true,
+            Province: true,
+            Subdistrict: true,
+            District: true,
+            Address: true,
+            Deposit_Amount: true,
+            Sell_Rent: true,
+            Image: true,
+            Deposit: true,
+            sellerId: true,
+          },
+        },
+        DocumentUpload: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            DocumentName: true,
+            Review_Status: true,
+            DocumentUrl: true,
+            createdAt: true,
+            User: {
+              select: {
+                First_name: true,
+                Last_name: true,
+              },
+            },
           },
         },
       },
@@ -309,7 +358,7 @@ export const getProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.Password) delete user.Password;
 
-    // Sync session
+    // Sync session ให้เป็นปัจจุบัน
     req.session.user = {
       userId: user.id,
       Email: user.Email,
@@ -332,7 +381,7 @@ export const getProfile = async (req, res) => {
   }
 };
 
-// ---------- logout ----------
+/* ========== logout ========== */
 export const logout = (req, res) => {
   try {
     req.session.destroy((err) => {
@@ -351,7 +400,7 @@ export const logout = (req, res) => {
   }
 };
 
-// ---------- registerSeller ----------
+/* ========== registerSeller ========== */
 export const registerSeller = async (req, res) => {
   try {
     if (!req.file) {
@@ -369,6 +418,7 @@ export const registerSeller = async (req, res) => {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // ตรวจสอบข้อมูลซ้ำ (เลขบัตร/ใบอนุญาต/userId)
       const existingSeller = await tx.seller.findFirst({
         where: {
           OR: [{ National_ID }, { RealEstate_License }, { userId }],
@@ -383,8 +433,8 @@ export const registerSeller = async (req, res) => {
           Company_Name,
           RealEstate_License,
           Status: "PENDING",
-          nationalIdImage: req.file.path,
-          publicId: req.file.filename,
+          nationalIdImage: req.file.path, // Cloudinary URL
+          publicId: req.file.filename, // Cloudinary public_id
         },
       });
 
@@ -396,6 +446,7 @@ export const registerSeller = async (req, res) => {
       return newSeller;
     });
 
+    // อัปเดต session ให้เป็นผู้ขายด้วย
     req.session.user = {
       ...(req.session.user || {}),
       userId,
