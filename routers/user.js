@@ -1,7 +1,7 @@
 // routes/user.merged.js (ESM, merged & normalized)
 import express from "express";
-import upload from "../Middlewares/upload.js"; // images / generic single-file
-import uploadDocument from "../Middlewares/document.js"; // user documents
+import upload from "../Middlewares/upload.js";              // images / generic single-file
+import uploadDocument from "../Middlewares/document.js";    // user documents
 import { isAuthenticated, isSeller } from "../Middlewares/authCheck.js";
 
 const router = express.Router();
@@ -44,131 +44,142 @@ import {
   removeTimeSlot,
   removeBooking,
   uploadFinalSlip,
-  confirmedSlipBySeller
+  confirmedSlipBySeller,
+  searchFilterDateTimeSlot,
 } from "../controllers/user.js";
 
-import { createStripePaymentIntent } from "../controllers/payment.js";
+import { createStripePaymentIntent /*, handleStripeWebhook*/ } from "../controllers/payment.js";
 
-// -------------------------------------------------------------
-// Admin / Management (consider adding adminOnly middleware)
-// -------------------------------------------------------------
+/* -------------------------------------------------------------
+ * Admin / Management (ควรมี adminOnly ถ้ามี middleware)
+ * ----------------------------------------------------------- */
 
 // Update Seller status (APPROVED/REJECTED/PENDING)
 router.patch("/seller/:sellerId/status", isAuthenticated, updateStatusSeller);
-// Back-compat alias (old route): /seller/status/:id
+
+// Back-compat alias (old route): /seller/status/:id  → map :id → :sellerId
 router.patch("/seller/status/:id", isAuthenticated, (req, res, next) => {
-  // Map old :id to new :sellerId
   req.params.sellerId = req.params.id;
   return updateStatusSeller(req, res, next);
 });
 
 // Delete user
 router.delete("/user/:id", isAuthenticated, deleteUser);
-// Back-compat alias (old route): /seller/:id (dangerous name). Keep for compatibility.
+// Back-compat alias (old, ใช้ path ว่า /seller/:id แต่ลบ user) — คงไว้เผื่อ FE เก่า
 router.delete("/seller/:id", isAuthenticated, deleteUser);
 
-// -------------------------------------------------------------
-// Lists / Search
-// -------------------------------------------------------------
+/* -------------------------------------------------------------
+ * Lists / Search
+ * ----------------------------------------------------------- */
 
+// รายชื่อผู้ขาย/ผู้ซื้อ
 router.get("/userSeller", listUserSeller);
 router.get("/userBuyer", listUserBuyer);
 
-// Search seller's own posts (requires login & seller)
+// ค้นหา “โพสต์ของผู้ขาย (เฉพาะของตัวเอง)”
 router.get("/search/post/seller", isAuthenticated, searchFiltersSeller);
-// Back-compat alias (old route used POST):
+
+// Back-compat alias (เดิมเคยยิงเป็น POST)
 router.post("/search/filters/seller", isAuthenticated, searchFiltersSeller);
 
-// -------------------------------------------------------------
-// Profiles (read-only by id)
-// -------------------------------------------------------------
+/* -------------------------------------------------------------
+ * Profiles (read-only by id)
+ * ----------------------------------------------------------- */
 
-router.get("/profileseller/:id", getSellerProfile); // alias name
-router.get("/seller/profile/:id", getSellerProfile); // back-compat
-router.get("/profile/:id", getUserProfile); // buyer profile by id
+router.get("/profileseller/:id", getSellerProfile);     // alias เดิม
+router.get("/seller/profile/:id", getSellerProfile);    // back-compat ชื่อ path อื่น
+router.get("/profile/:id", getUserProfile);             // โปรไฟล์ Buyer ตาม id
 
-// -------------------------------------------------------------
-// Profiles (self update)
-// -------------------------------------------------------------
+/* -------------------------------------------------------------
+ * Profiles (self update)
+ * ----------------------------------------------------------- */
 
-// Update buyer/user profile (User + Buyer)
+// อัปเดตโปรไฟล์ “เฉพาะผู้ใช้/ผู้ซื้อ” (User + Buyer)
 router.patch("/profile", isAuthenticated, updateUser);
 
-// Update combined profile (User + Buyer + Seller) — only for Seller
+// อัปเดตแบบรวม (User + Buyer + Seller) — เฉพาะ Seller
 router.patch("/profileseller", isAuthenticated, updateSeller);
 router.patch("/seller/profile", isAuthenticated, updateSeller); // back-compat
 
-// Update profile image
+// อัปเดตรูปโปรไฟล์
 router.post("/image", isAuthenticated, upload.single("image"), updateimage);
 
-// -------------------------------------------------------------
-// Seller posts management (self)
-// -------------------------------------------------------------
+/* -------------------------------------------------------------
+ * Seller posts management (self)
+ * ----------------------------------------------------------- */
 
-// Get seller's own posts
+// ดูโพสต์ของผู้ขาย (ของตัวเอง)
 router.get("/post/seller", isAuthenticated, getpostBySeller);
-router.get("/seller/posts/:id", isAuthenticated, getpostBySeller); // back-compat
+// Back-compat alias (บางที่อาจเรียกด้วย path เก่า)
+router.get("/seller/posts/:id", isAuthenticated, getpostBySeller);
 
-// Delete a post owned by seller
-router.delete(
-  "/seller/remove/post/:postId",
-  isAuthenticated,
-  deletePostBySeller
-);
+// ลบโพสต์ของผู้ขาย (ของตัวเอง)
+router.delete("/seller/remove/post/:postId", isAuthenticated, deletePostBySeller);
+// Back-compat alias: /seller/post/:id → map :id → :postId
 router.delete("/seller/post/:id", isAuthenticated, (req, res, next) => {
-  // map old :id to new :postId
   req.params.postId = req.params.id;
   return deletePostBySeller(req, res, next);
 });
 
-// -------------------------------------------------------------
-// Deposits
-// -------------------------------------------------------------
+/* -------------------------------------------------------------
+ * Deposits
+ * ----------------------------------------------------------- */
 
+// สร้างมัดจำ
 router.post("/user/create/deposit", isAuthenticated, createdeposite);
+
+// ดูรายการมัดจำของผู้ใช้ปัจจุบัน (ใช้ session)
 router.get("/deposit", isAuthenticated, getdeposits);
-router.patch(
-  "/update/status/deposit/:depositId",
+
+// ผู้ขายอัปเดตสถานะมัดจำ (CONFIRMED/REJECTED)
+router.patch("/update/status/deposit/:depositId", isAuthenticated, updateDepositStatus);
+
+/* -------------------------------------------------------------
+ * Documents
+ * ----------------------------------------------------------- */
+
+router.post(
+  "/document",
   isAuthenticated,
-  updateDepositStatus
+  uploadDocument.single("document"),
+  useruploadDocument
 );
 
-// -------------------------------------------------------------
-// Documents
-// -------------------------------------------------------------
+/* -------------------------------------------------------------
+ * DateTime Slots & Booking
+ * ----------------------------------------------------------- */
 
-router.post("/document", uploadDocument.single("document"), useruploadDocument);
-
-// -------------------------------------------------------------
-// DateTime Slots & Booking
-// -------------------------------------------------------------
-
-// Create slots (seller only)
+// Seller: สร้างช่วงเวลาให้โพสต์
 router.post("/seller/slot", isAuthenticated, isSeller, createDateTimeSlot);
-// Remove a slot (seller)
+
+// Seller: ลบช่วงเวลา (ลบ booking ที่เกี่ยวข้องอัตโนมัติ)
 router.delete("/seller/remove/:timeSlotId", isAuthenticated, removeTimeSlot);
-// Search seller slots
+
+// Seller: ค้นหา slot ของตัวเอง (มี filter)
 router.post("/search/slot/seller", isAuthenticated, searchFilterDateTimeSlot);
 
-// Booking
+// Buyer/Seller: สร้าง/ลบ booking
 router.post("/user/booking", isAuthenticated, createBooking);
 router.delete("/user/remove/:bookingId", isAuthenticated, removeBooking);
 
-// Final payment slip upload (buyer)
+// Buyer: อัปโหลดสลิปจ่ายส่วนที่เหลือ
 router.post(
   "/upload-final-slip/:bookingId",
   isAuthenticated,
   upload.single("finalSlip"),
   uploadFinalSlip
 );
-// Seller confirms final slip
-router.post(
-  '/upload-final-slip/:bookingId',
-  isAuthenticated,             // 1. Middleware: ตรวจสอบก่อนว่าผู้ใช้ login แล้วหรือยัง
-  upload.single('finalSlip'),  // 2. Middleware: รับไฟล์จาก form-data ที่มีชื่อ field ว่า 'finalSlip' แล้วส่งไป Cloudinary
-  uploadFinalSlip              // 3. Controller: เมื่อ Middleware ทั้งสองทำงานเสร็จ จะเรียกใช้ฟังก์ชันนี้ต่อ
-);
-//confirmedSlipBySeller
-router.post("/confirmed-slip/:bookingId", isAuthenticated, confirmedSlipBySeller)
+
+// Seller: ยืนยันสลิปสุดท้าย
+router.post("/confirmed-slip/:bookingId", isAuthenticated, confirmedSlipBySeller);
+
+/* -------------------------------------------------------------
+ * Stripe Payments
+ * ----------------------------------------------------------- */
+
+router.post("/create/payment", isAuthenticated, createStripePaymentIntent);
+
+// (ถ้าจะใช้ Webhook จริงให้เปิด route นี้ และอย่าผ่าน body-parser json)
+// router.post("/payments/stripe/webhook", handleStripeWebhook);
 
 export default router;

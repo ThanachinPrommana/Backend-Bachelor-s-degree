@@ -1,15 +1,16 @@
-// routes/post.js (ESM)
+// routes/post.js (ESM) — MERGED
 
 import express from "express";
 import propertyUpload from "../Middlewares/propertyUploader.js";
-import { 
-    createpost, 
-    getbycategory, 
-    getPost, 
-    removepost, 
-    updatePost, 
-    searchFilters, 
-    getallcategory 
+import {
+  createpost,
+  getbycategory,
+  getPost,
+  removepost,
+  updatePost,
+  searchFilters,
+  getallcategory,
+  getHomePagePosts, // ★ added
 } from "../controllers/post.js";
 import { isAuthenticated } from "../Middlewares/authCheck.js";
 
@@ -43,8 +44,15 @@ router.patch(
   "/propertypost/:id",
   propertyUpload.fields([
     { name: "images", maxCount: 5 },
-    { name: 'videos', maxCount: 2 }
-]), updatePost)
-router.post("/search/filters", searchFilters)
+    { name: "videos", maxCount: 2 },
+  ]),
+  updatePost
+);
+
+// Search posts by filters
+router.post("/search/filters", searchFilters);
+
+// Home page posts
+router.get("/homepage/posts", getHomePagePosts);
 
 export default router;

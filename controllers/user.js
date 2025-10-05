@@ -597,6 +597,7 @@ export const useruploadDocument = async (req, res) => {
   }
 };
 
+// GET deposits ของผู้ใช้ (คง compatibility: propertyPost)
 export const getdeposits = async (req, res) => {
   try {
     const userId = req.session.user?.userId; // fixed from .id
@@ -604,14 +605,23 @@ export const getdeposits = async (req, res) => {
 
     const deposits = await prisma.deposit.findMany({
       where: { userId },
-      include: { Post: true },
-    }); // use Post relation consistently
-    res.json({ deposits });
+      include: { Post: true }, // ชื่อ relation จริง
+      orderBy: { createdAt: "desc" },
+    });
+
+    // ทำ alias: propertyPost -> Post เพื่อรองรับ FE เดิม
+    const compat = deposits.map((d) => ({
+      ...d,
+      propertyPost: d.Post,
+    }));
+
+    res.json({ deposits: compat });
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Server Error" });
   }
 };
+
 
 export const getpostBySeller = async (req, res) => {
   try {
@@ -949,6 +959,7 @@ export const updateDepositStatus = async (req, res) => {
 };
 
 // keep original name for FE compatibility
+// ค้นหามัดจำของผู้ใช้ (คง compatibility: propertyPost)
 export const searchFillerDiposit = async (req, res) => {
   try {
     const user = req.session.user;
@@ -967,10 +978,11 @@ export const searchFillerDiposit = async (req, res) => {
       ];
     }
 
-    // Avoid referencing Status_Disposit; accept strings directly
+    // รับสถานะเป็นสตริงตรงๆ
     const ALLOWED_DEPOSIT_STATUS = ["PENDING", "CONFIRMED", "REJECTED"];
-    if (status && ALLOWED_DEPOSIT_STATUS.includes(status))
+    if (status && ALLOWED_DEPOSIT_STATUS.includes(status)) {
       where.Deposit_Status = status;
+    }
 
     if (minAmount || maxAmount) {
       where.Deposit_Amount = {};
@@ -984,12 +996,19 @@ export const searchFillerDiposit = async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
 
-    res.status(200).json({ message: "Success", data: deposits });
+    // ทำ alias: propertyPost -> Post เพื่อรองรับ FE เดิม
+    const compat = deposits.map((d) => ({
+      ...d,
+      propertyPost: d.Post,
+    }));
+
+    res.status(200).json({ message: "Success", data: compat });
   } catch (err) {
     console.error("Error searching user deposits:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
 
 /* ================== DateTimeSlot & Booking =========== */
 export const createDateTimeSlot = async (req, res) => {

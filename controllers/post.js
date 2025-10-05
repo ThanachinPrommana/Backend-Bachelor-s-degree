@@ -1,4 +1,4 @@
-// controllers/post.merged.js (merged & optimized)
+// controllers/post.merged.final.js
 import prisma from "../config/prisma.js";
 import cloudinary from "../utils/cloudinary.js";
 import {
@@ -9,46 +9,28 @@ import {
   connectIf,
 } from "../utils/parse.js";
 
-// ===== Allowed enums (must match schema.prisma) =====
-const ALLOWED_LANDMARKS = [
-  "BTS_MRT",
-  "School",
-  "Hospital",
-  "Mall_Market",
-  "Park",
-];
-const ALLOWED_AMENITIES = [
-  "Swimming_Pool",
-  "Fitness_Center",
-  "Co_working_Space",
-  "Pet_Friendly",
-];
+/* ========= Allowed enums (must match schema.prisma) ========= */
+const ALLOWED_LANDMARKS = ["BTS_MRT", "School", "Hospital", "Mall_Market", "Park"];
+const ALLOWED_AMENITIES = ["Swimming_Pool", "Fitness_Center", "Co_working_Space", "Pet_Friendly"];
 
-// =============== CREATE (Create Post + initial Deposit + optional PropertyUnits) ===============
+/* =============== CREATE (Post + initial Deposit + optional Units) =============== */
 export const createpost = async (req, res) => {
   try {
     if (!req.session.user) {
-      return res
-        .status(401)
-        .json({ message: "Unauthorized, please login first" });
+      return res.status(401).json({ message: "Unauthorized, please login first" });
     }
 
     const { userId, userType, sellerId } = req.session.user || {};
 
-    // Fallback: if Seller but sellerId missing in session, fetch from DB
+    // Fallback: หากเป็น Seller แต่ session ไม่มี sellerId ให้ดึงจาก DB
     let effectiveSellerId = sellerId;
     if (userType === "Seller" && !effectiveSellerId) {
-      const seller = await prisma.seller.findFirst({
-        where: { userId },
-        select: { id: true },
-      });
+      const seller = await prisma.seller.findFirst({ where: { userId }, select: { id: true } });
       if (seller) effectiveSellerId = seller.id;
     }
 
     if (userType !== "Seller" || !effectiveSellerId) {
-      return res
-        .status(403)
-        .json({ message: "Forbidden: Only sellers can create posts." });
+      return res.status(403).json({ message: "Forbidden: Only sellers can create posts." });
     }
 
     const {
@@ -78,33 +60,29 @@ export const createpost = async (req, res) => {
       Name,
       Phone,
       Bathroom,
-      // Propertytype, // ❌ not in schema (kept out intentionally)
+      // Propertytype, // ❌ intentionally excluded to match schema
       Other_related_expenses,
       categoryId,
       Interest,
       floor,
-      propertyUnits, // optional array or JSON string
+      propertyUnits, // optional
     } = req.body;
 
     if (!Deposit_Amount || Number(Deposit_Amount) <= 0) {
-      return res
-        .status(400)
-        .json({ message: "This post requires a valid deposit amount." });
+      return res.status(400).json({ message: "This post requires a valid deposit amount." });
     }
 
-    // Files (multer.fields / multer.array supported)
+    // รองรับทั้ง multer.fields() และ multer.array()
     const imageFiles = filesOf(req.files, "images");
     const videoFiles = filesOf(req.files, "videos");
 
-    // Parse propertyUnits (stringified JSON or array)
+    // Parse propertyUnits (stringified JSON หรือ array ตรงๆ)
     let parsedPropertyUnits = [];
     if (typeof propertyUnits === "string" && propertyUnits.length > 0) {
       try {
         parsedPropertyUnits = JSON.parse(propertyUnits);
       } catch {
-        return res
-          .status(400)
-          .json({ message: "Invalid format for propertyUnits." });
+        return res.status(400).json({ message: "Invalid format for propertyUnits." });
       }
     } else if (Array.isArray(propertyUnits)) {
       parsedPropertyUnits = propertyUnits;
@@ -126,13 +104,10 @@ export const createpost = async (req, res) => {
             Bedrooms: toIntOrNull(Bedrooms),
             Bathroom: toIntOrNull(Bathroom),
             Total_Rooms: toIntOrNull(Total_Rooms),
-            Year_Built, // string per schema
+            Year_Built, // string ตาม schema
 
             Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
-            Additional_Amenities: toEnumArray(
-              Additional_Amenities,
-              ALLOWED_AMENITIES
-            ),
+            Additional_Amenities: toEnumArray(Additional_Amenities, ALLOWED_AMENITIES),
 
             Deposit_Amount: toFloatOrNull(Deposit_Amount),
             Contract_Seller,
@@ -163,9 +138,7 @@ export const createpost = async (req, res) => {
                 },
               }),
 
-            ...(connectIf(categoryId)
-              ? { Category: connectIf(categoryId) }
-              : {}),
+            ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
 
             user: { connect: { id: userId } },
             seller: { connect: { id: effectiveSellerId } },
@@ -190,7 +163,7 @@ export const createpost = async (req, res) => {
           include: { Image: true, Video: true },
         });
 
-        // Create an initial Deposit record for the post itself (no buyer)
+        // สร้าง initial Deposit ผูกกับโพสต์ (ยังไม่ระบุผู้ซื้อ)
         await tx.deposit.create({
           data: {
             postId: newPost.id,
@@ -211,7 +184,7 @@ export const createpost = async (req, res) => {
   }
 };
 
-// =============== LIST (placeholder) ===============
+/* =============== LIST (placeholder) =============== */
 export const list = async (req, res) => {
   try {
     res.json([]);
@@ -220,70 +193,90 @@ export const list = async (req, res) => {
   }
 };
 
-export const handlePrice = async (req, res, price) => {
-  // TODO
+/* =============== SEARCH HELPERS =============== */
+const addTextQuery = (where, query) => ({
+  ...where,
+  OR: [
+    { Property_Name: { contains: query, mode: "insensitive" } },
+    { Description: { contains: query, mode: "insensitive" } },
+    { Address: { contains: query, mode: "insensitive" } },
+    { Year_Built: { contains: query, mode: "insensitive" } }, // <- เวอร์ชันก่อนมี (คงไว้)
+  ],
+});
+
+const addCategoryFilter = (where, categoryId) => {
+  const ids = Array.isArray(categoryId) ? categoryId : [categoryId];
+  return { ...where, categoryId: { in: ids } };
 };
 
-const handlecategory = async (req, res, categoryId) => {
-  try {
-    const ids = Array.isArray(categoryId) ? categoryId : [categoryId];
-    const products = await prisma.propertyPost.findMany({
-      where: { categoryId: { in: ids } },
-      include: { Image: true, Category: true },
-    });
-    res.json({ products });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ message: "Server Error" });
-  }
+const addLocationFilter = (where, { province, district, subdistrict }) => {
+  const f = {};
+  if (province) f.Province = { contains: province, mode: "insensitive" };
+  if (district) f.District = { contains: district, mode: "insensitive" };
+  if (subdistrict) f.Subdistrict = { contains: subdistrict, mode: "insensitive" };
+  return { ...where, ...f };
 };
 
-export const handleSellerRent = async (req, res) => {
-  // TODO
+const addPriceFilter = (where, { minPrice, maxPrice }) => {
+  const Price = {};
+  if (minPrice != null && minPrice !== "") Price.gte = parseInt(minPrice, 10);
+  if (maxPrice != null && maxPrice !== "") Price.lte = parseInt(maxPrice, 10);
+  return Object.keys(Price).length ? { ...where, Price } : where;
 };
 
-// =============== SEARCH HELPERS ===============
-const handleQuery = async (req, res, query) => {
-  try {
-    const post = await prisma.propertyPost.findMany({
-      where: {
-        OR: [
-          { Property_Name: { contains: query, mode: "insensitive" } },
-          { Year_Built: { contains: query, mode: "insensitive" } },
-          { Description: { contains: query, mode: "insensitive" } },
-          { Address: { contains: query, mode: "insensitive" } },
-        ],
-      },
-      include: { Category: true, Image: true },
-    });
-    res.json({ post });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ message: "Server Error" });
-  }
-};
-
+/* =============== SEARCH (public feed, with pagination) =============== */
 export const searchFilters = async (req, res) => {
   try {
-    const { query, categoryId } = req.body;
-    if (query) {
-      console.log("query--->", query);
-      await handleQuery(req, res, query);
-      return;
-    }
-    if (categoryId) {
-      console.log("categoryId--->", categoryId);
-      await handlecategory(req, res, categoryId);
-      return;
-    }
-    res.json({ post: [] });
+    const {
+      query,
+      categoryId,
+      province,
+      district,
+      subdistrict,
+      minPrice,
+      maxPrice,
+      take: takeRaw,
+      skip: skipRaw,
+    } = req.body;
+
+    const take = Math.min(Number(takeRaw) || 20, 100);
+    const skip = Math.max(Number(skipRaw) || 0, 0);
+
+    let where = { Status_post: "CONFIRMED" };
+    if (query) where = addTextQuery(where, query);
+    if (categoryId) where = addCategoryFilter(where, categoryId);
+    if (province || district || subdistrict) where = addLocationFilter(where, { province, district, subdistrict });
+    if (minPrice || maxPrice) where = addPriceFilter(where, { minPrice, maxPrice });
+
+    const [posts, total] = await prisma.$transaction([
+      prisma.propertyPost.findMany({
+        where,
+        select: {
+          id: true,
+          Property_Name: true,
+          Price: true,
+          Province: true,
+          District: true,
+          Subdistrict: true,
+          Category: true,
+          Image: { take: 1, select: { url: true, secure_url: true } },
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take,
+        skip,
+      }),
+      prisma.propertyPost.count({ where }),
+    ]);
+
+    res.json({ total, count: posts.length, posts });
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// =============== GET BY CATEGORY ===============
+/* =============== GET BY CATEGORY =============== */
 export const getbycategory = async (req, res) => {
   try {
     const { categoryId } = req.params;
@@ -304,7 +297,7 @@ export const getbycategory = async (req, res) => {
   }
 };
 
-// =============== GET SINGLE POST ===============
+/* =============== GET SINGLE POST =============== */
 export const getPost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -312,7 +305,8 @@ export const getPost = async (req, res) => {
     const post = await prisma.propertyPost.findUnique({
       where: { id },
       select: {
-        floor: true, // ✅ จำนวนชั้น
+        id: true, // <- เพิ่ม id ให้เหมือนอีกเวอร์ชัน
+        floor: true,
         Property_Name: true,
         Province: true,
         Deposit: true,
@@ -337,18 +331,15 @@ export const getPost = async (req, res) => {
         Additional_Amenities: true,
         Parking_Space: true,
         Sell_Rent: true,
-        user: { select: { First_name: true, Last_name: true } },
+        user: { select: { First_name: true, Last_name: true, image: true } },
         Phone: true,
         Latitude: true,
         Longitude: true,
         Other_related_expenses: true,
         Status_post: true,
-        Video: {
-          select: {
-            url: true,
-            secure_url: true
-          }
-        }
+        PropertyUnit: { select: { id: true, Unit_Number: true, Status: true } },
+        NumberOfUnits: true,
+        Video: { select: { url: true, secure_url: true } },
       },
     });
 
@@ -359,7 +350,7 @@ export const getPost = async (req, res) => {
   }
 };
 
-// =============== REMOVE (ADMIN/OWNER) ===============
+/* =============== REMOVE (ADMIN/OWNER) =============== */
 export const removepost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -367,23 +358,19 @@ export const removepost = async (req, res) => {
     const post = await prisma.propertyPost.findUnique({ where: { id } });
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    const images = await prisma.image.findMany({
-      where: { propertyPostId: id },
-    });
+    const images = await prisma.image.findMany({ where: { propertyPostId: id } });
     const videos = await prisma.video.findMany({ where: { postId: id } });
 
     const imagePublicIds = images.map((i) => i.public_id).filter(Boolean);
     const videoPublicIds = videos.map((v) => v.public_id).filter(Boolean);
 
-    // Delete cloud assets in parallel (faster)
+    // ลบ Cloudinary แบบขนาน (เร็วกว่า) และไม่ล้มทรานแซกชันหลักถ้าลบไฟล์บางส่วนพลาด
     await Promise.allSettled([
       imagePublicIds.length
         ? cloudinary.api.delete_resources(imagePublicIds)
         : Promise.resolve(),
       videoPublicIds.length
-        ? cloudinary.api.delete_resources(videoPublicIds, {
-            resource_type: "video",
-          })
+        ? cloudinary.api.delete_resources(videoPublicIds, { resource_type: "video" })
         : Promise.resolve(),
     ]);
 
@@ -406,7 +393,7 @@ export const removepost = async (req, res) => {
   }
 };
 
-// =============== UPDATE (supports media refresh) ===============
+/* =============== UPDATE (supports media refresh) =============== */
 export const updatePost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -417,25 +404,19 @@ export const updatePost = async (req, res) => {
     const { sellerId } = req.session.user;
 
     if (!req.body || typeof req.body !== "object") {
-      return res
-        .status(400)
-        .json({ message: "Invalid or missing request body" });
+      return res.status(400).json({ message: "Invalid or missing request body" });
     }
 
-    const existingPost = await prisma.propertyPost.findUnique({
-      where: { id },
-    });
+    const existingPost = await prisma.propertyPost.findUnique({ where: { id } });
     if (!existingPost) {
       return res.status(404).json({ message: "Post not found" });
     }
 
     if (existingPost.sellerId !== sellerId) {
-      return res
-        .status(403)
-        .json({ message: "Forbidden: You are not the owner of this post" });
+      return res.status(403).json({ message: "Forbidden: You are not the owner of this post" });
     }
 
-    // Allowed fields (Propertytype excluded to match schema)
+    // ฟิลด์ที่อนุญาตให้อัปเดต (Propertytype ถูกถอดออกให้ตรง schema)
     const allowedFields = [
       "Property_Name",
       "Price",
@@ -463,29 +444,15 @@ export const updatePost = async (req, res) => {
       "Name",
       "Phone",
       "Bathroom",
-      // "Propertytype", // ❌ not in schema
+      // "Propertytype", // ❌ excluded
       "Other_related_expenses",
       "categoryId",
       "Interest",
       "floor",
     ];
 
-    const asInt = [
-      "Bedrooms",
-      "Bathroom",
-      "Total_Rooms",
-      "Parking_Space",
-      "floor",
-    ];
-    const asFloat = [
-      "Usable_Area",
-      "Land_Size",
-      "Deposit_Amount",
-      "Price",
-      "Latitude",
-      "Longitude",
-      "Interest",
-    ];
+    const asInt = ["Bedrooms", "Bathroom", "Total_Rooms", "Parking_Space", "floor"];
+    const asFloat = ["Usable_Area", "Land_Size", "Deposit_Amount", "Price", "Latitude", "Longitude", "Interest"];
 
     const dataToUpdate = {};
     for (const [k, v] of Object.entries(req.body)) {
@@ -533,18 +500,14 @@ export const updatePost = async (req, res) => {
       data: dataToUpdate,
     });
 
-    // ==== Media update (only if new files provided) ====
+    // ==== Media update (เฉพาะเมื่อมีไฟล์ใหม่) ====
     const newImages = filesOf(req.files, "images");
     let imageResult = null;
     if (newImages.length > 0) {
-      const oldImages = await prisma.image.findMany({
-        where: { propertyPostId: id },
-      });
+      const oldImages = await prisma.image.findMany({ where: { propertyPostId: id } });
       await Promise.all(
         oldImages.map((img) =>
-          img.public_id
-            ? cloudinary.uploader.destroy(img.public_id)
-            : Promise.resolve()
+          img.public_id ? cloudinary.uploader.destroy(img.public_id) : Promise.resolve()
         )
       );
       await prisma.image.deleteMany({ where: { propertyPostId: id } });
@@ -567,9 +530,7 @@ export const updatePost = async (req, res) => {
       await Promise.all(
         oldVideos.map((v) =>
           v.public_id
-            ? cloudinary.uploader.destroy(v.public_id, {
-                resource_type: "video",
-              })
+            ? cloudinary.uploader.destroy(v.public_id, { resource_type: "video" })
             : Promise.resolve()
         )
       );
@@ -598,7 +559,7 @@ export const updatePost = async (req, res) => {
   }
 };
 
-// =============== CATEGORIES ===============
+/* =============== CATEGORIES =============== */
 export const getallcategory = async (req, res) => {
   try {
     const categories = await prisma.category.findMany();
@@ -606,5 +567,57 @@ export const getallcategory = async (req, res) => {
   } catch (err) {
     console.error("Error in getallcategory:", err);
     res.status(500).json({ message: "Failed to retrieve categories." });
+  }
+};
+
+/* =============== HOMEPAGE FEED (personalized ordering) =============== */
+export const getHomePagePosts = async (req, res) => {
+  try {
+    const userFromSession = req.session.user;
+    const userId = userFromSession ? userFromSession.userId : null;
+
+    let buyerPreferences = null;
+    if (userId) {
+      buyerPreferences = await prisma.buyer.findUnique({
+        where: { userId },
+        select: { Preferred_Province: true, Preferred_District: true },
+      });
+    }
+
+    const allPosts = await prisma.propertyPost.findMany({
+      where: { Status_post: "CONFIRMED" },
+      select: {
+        id: true,
+        Province: true,
+        District: true,
+        Property_Name: true,
+        Price: true,
+        Image: { take: 1, select: { url: true, secure_url: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+
+    if (!buyerPreferences) {
+      return res.json(allPosts);
+    }
+
+    // ✅ แก้บั๊ก: เทียบ Province กับ Preferred_Province (ตัวเก่ามีสลับฟิลด์)
+    allPosts.sort((a, b) => {
+      const aMatch =
+        a.Province === buyerPreferences.Preferred_Province &&
+        a.District === buyerPreferences.Preferred_District;
+      const bMatch =
+        b.Province === buyerPreferences.Preferred_Province &&
+        b.District === buyerPreferences.Preferred_District;
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0;
+    });
+
+    res.json(allPosts);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server Error" });
   }
 };
