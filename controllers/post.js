@@ -220,86 +220,63 @@ export const list = async (req, res) => {
   }
 };
 
+export const handlePrice = async (req, res, price) => {
+  // TODO
+};
+
+const handlecategory = async (req, res, categoryId) => {
+  try {
+    const ids = Array.isArray(categoryId) ? categoryId : [categoryId];
+    const products = await prisma.propertyPost.findMany({
+      where: { categoryId: { in: ids } },
+      include: { Image: true, Category: true },
+    });
+    res.json({ products });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+export const handleSellerRent = async (req, res) => {
+  // TODO
+};
+
 // =============== SEARCH HELPERS ===============
-const addTextQuery = (where, query) => ({
-  ...where,
-  OR: [
-    { Property_Name: { contains: query, mode: "insensitive" } },
-    { Description: { contains: query, mode: "insensitive" } },
-    { Address: { contains: query, mode: "insensitive" } },
-    { Year_Built: { contains: query, mode: "insensitive" } },
-  ],
-});
-
-const addCategoryFilter = (where, categoryId) => {
-  const ids = Array.isArray(categoryId) ? categoryId : [categoryId];
-  return { ...where, categoryId: { in: ids } };
+const handleQuery = async (req, res, query) => {
+  try {
+    const post = await prisma.propertyPost.findMany({
+      where: {
+        OR: [
+          { Property_Name: { contains: query, mode: "insensitive" } },
+          { Year_Built: { contains: query, mode: "insensitive" } },
+          { Description: { contains: query, mode: "insensitive" } },
+          { Address: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      include: { Category: true, Image: true },
+    });
+    res.json({ post });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server Error" });
+  }
 };
 
-const addLocationFilter = (where, { province, district, subdistrict }) => {
-  const f = {};
-  if (province) f.Province = { contains: province, mode: "insensitive" };
-  if (district) f.District = { contains: district, mode: "insensitive" };
-  if (subdistrict)
-    f.Subdistrict = { contains: subdistrict, mode: "insensitive" };
-  return { ...where, ...f };
-};
-
-const addPriceFilter = (where, { minPrice, maxPrice }) => {
-  const Price = {};
-  if (minPrice != null && minPrice !== "") Price.gte = parseInt(minPrice, 10);
-  if (maxPrice != null && maxPrice !== "") Price.lte = parseInt(maxPrice, 10);
-  return Object.keys(Price).length ? { ...where, Price } : where;
-};
-
-// =============== SEARCH (public feed) ===============
 export const searchFilters = async (req, res) => {
   try {
-    const {
-      query,
-      categoryId,
-      province,
-      district,
-      subdistrict,
-      minPrice,
-      maxPrice,
-      take: takeRaw,
-      skip: skipRaw,
-    } = req.body;
-
-    const take = Math.min(Number(takeRaw) || 20, 100);
-    const skip = Math.max(Number(skipRaw) || 0, 0);
-
-    let where = { Status_post: "CONFIRMED" };
-    if (query) where = addTextQuery(where, query);
-    if (categoryId) where = addCategoryFilter(where, categoryId);
-    if (province || district || subdistrict)
-      where = addLocationFilter(where, { province, district, subdistrict });
-    if (minPrice || maxPrice)
-      where = addPriceFilter(where, { minPrice, maxPrice });
-
-    const [posts, total] = await prisma.$transaction([
-      prisma.propertyPost.findMany({
-        where,
-        select: {
-          id: true,
-          Property_Name: true,
-          Price: true,
-          Province: true,
-          District: true,
-          Subdistrict: true,
-          Category: true,
-          Image: { take: 1, select: { url: true, secure_url: true } },
-          createdAt: true,
-        },
-        orderBy: { createdAt: "desc" },
-        take,
-        skip,
-      }),
-      prisma.propertyPost.count({ where }),
-    ]);
-
-    res.json({ total, count: posts.length, posts });
+    const { query, categoryId } = req.body;
+    if (query) {
+      console.log("query--->", query);
+      await handleQuery(req, res, query);
+      return;
+    }
+    if (categoryId) {
+      console.log("categoryId--->", categoryId);
+      await handlecategory(req, res, categoryId);
+      return;
+    }
+    res.json({ post: [] });
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Server error" });
@@ -335,7 +312,7 @@ export const getPost = async (req, res) => {
     const post = await prisma.propertyPost.findUnique({
       where: { id },
       select: {
-        floor: true,
+        floor: true, // ✅ จำนวนชั้น
         Property_Name: true,
         Province: true,
         Deposit: true,
@@ -360,15 +337,18 @@ export const getPost = async (req, res) => {
         Additional_Amenities: true,
         Parking_Space: true,
         Sell_Rent: true,
-        user: { select: { First_name: true, Last_name: true, image: true } },
+        user: { select: { First_name: true, Last_name: true } },
         Phone: true,
         Latitude: true,
         Longitude: true,
         Other_related_expenses: true,
         Status_post: true,
-        PropertyUnit: { select: { id: true, Unit_Number: true, Status: true } },
-        NumberOfUnits: true,
-        Video: { select: { url: true, secure_url: true } },
+        Video: {
+          select: {
+            url: true,
+            secure_url: true
+          }
+        }
       },
     });
 
@@ -626,60 +606,5 @@ export const getallcategory = async (req, res) => {
   } catch (err) {
     console.error("Error in getallcategory:", err);
     res.status(500).json({ message: "Failed to retrieve categories." });
-  }
-};
-
-// =============== HOMEPAGE FEED (personalized ordering) ===============
-export const getHomePagePosts = async (req, res) => {
-  try {
-    const userFromSession = req.session.user;
-    const userId = userFromSession ? userFromSession.userId : null;
-
-    let buyerPreferences = null;
-    if (userId) {
-      buyerPreferences = await prisma.buyer.findUnique({
-        where: { userId },
-        select: {
-          Preferred_Province: true,
-          Preferred_District: true,
-        },
-      });
-    }
-
-    const allPosts = await prisma.propertyPost.findMany({
-      where: { Status_post: "CONFIRMED" },
-      select: {
-        id: true,
-        Province: true,
-        District: true,
-        Property_Name: true,
-        Price: true,
-        Image: { take: 1, select: { url: true, secure_url: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    });
-
-    if (!buyerPreferences) {
-      return res.json(allPosts);
-    }
-
-    // Fix bug from original new file (Province vs Preferred_District typo)
-    allPosts.sort((a, b) => {
-      const aMatch =
-        a.Province === buyerPreferences.Preferred_Province &&
-        a.District === buyerPreferences.Preferred_District;
-      const bMatch =
-        b.Province === buyerPreferences.Preferred_Province &&
-        b.District === buyerPreferences.Preferred_District;
-      if (aMatch && !bMatch) return -1;
-      if (!aMatch && bMatch) return 1;
-      return 0;
-    });
-
-    res.json(allPosts);
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ message: "Server Error" });
   }
 };

@@ -11,8 +11,9 @@ import { isAuthenticated } from "../Middlewares/authCheck.js";
 
 const router = express.Router();
 
-// Get notifications for a user (userId เป็น optional)
-router.get("/user/notification/:userId?", isAuthenticated, getuserNotifications);
+router.get("/user/notification/:userId",isAuthenticated, getuserNotifications)
+router.delete("/user/remove/noti/:notiId", isAuthenticated, removeNotification)
+router.delete("/user/removeAll/noti", removeNotiAll)
 
 // Mark single notification as read
 router.patch("/user/notification/:notiId/read", isAuthenticated, markAsRead);

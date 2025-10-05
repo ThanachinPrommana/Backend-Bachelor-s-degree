@@ -44,8 +44,7 @@ import {
   removeTimeSlot,
   removeBooking,
   uploadFinalSlip,
-  confirmedSlipBySeller,
-  searchFilterDateTimeSlot,
+  confirmedSlipBySeller
 } from "../controllers/user.js";
 
 import { createStripePaymentIntent } from "../controllers/payment.js";
@@ -138,12 +137,7 @@ router.patch(
 // Documents
 // -------------------------------------------------------------
 
-router.post(
-  "/document",
-  isAuthenticated,
-  uploadDocument.single("document"),
-  useruploadDocument
-);
+router.post("/document", uploadDocument.single("document"), useruploadDocument);
 
 // -------------------------------------------------------------
 // DateTime Slots & Booking
@@ -169,14 +163,12 @@ router.post(
 );
 // Seller confirms final slip
 router.post(
-  "/confirmed-slip/:bookingId",
-  isAuthenticated,
-  confirmedSlipBySeller
+  '/upload-final-slip/:bookingId',
+  isAuthenticated,             // 1. Middleware: ตรวจสอบก่อนว่าผู้ใช้ login แล้วหรือยัง
+  upload.single('finalSlip'),  // 2. Middleware: รับไฟล์จาก form-data ที่มีชื่อ field ว่า 'finalSlip' แล้วส่งไป Cloudinary
+  uploadFinalSlip              // 3. Controller: เมื่อ Middleware ทั้งสองทำงานเสร็จ จะเรียกใช้ฟังก์ชันนี้ต่อ
 );
-
-// -------------------------------------------------------------
-// Stripe Payments
-// -------------------------------------------------------------
-router.post("/create/payment", isAuthenticated, createStripePaymentIntent);
+//confirmedSlipBySeller
+router.post("/confirmed-slip/:bookingId", isAuthenticated, confirmedSlipBySeller)
 
 export default router;
