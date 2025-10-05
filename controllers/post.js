@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 // controllers/post.merged.final.js
+=======
+// controllers/post.js (merged, safe with current schema)
+>>>>>>> Stashed changes
 import prisma from "../config/prisma.js";
 import cloudinary from "../utils/cloudinary.js";
 import {
@@ -10,8 +14,24 @@ import {
 } from "../utils/parse.js";
 
 /* ========= Allowed enums (must match schema.prisma) ========= */
+<<<<<<< Updated upstream
 const ALLOWED_LANDMARKS = ["BTS_MRT", "School", "Hospital", "Mall_Market", "Park"];
 const ALLOWED_AMENITIES = ["Swimming_Pool", "Fitness_Center", "Co_working_Space", "Pet_Friendly"];
+=======
+const ALLOWED_LANDMARKS = [
+  "BTS_MRT",
+  "School",
+  "Hospital",
+  "Mall_Market",
+  "Park",
+];
+const ALLOWED_AMENITIES = [
+  "Swimming_Pool",
+  "Fitness_Center",
+  "Co_working_Space",
+  "Pet_Friendly",
+];
+>>>>>>> Stashed changes
 
 /* =============== CREATE (Post + initial Deposit + optional Units) =============== */
 export const createpost = async (req, res) => {
@@ -22,7 +42,11 @@ export const createpost = async (req, res) => {
 
     const { userId, userType, sellerId } = req.session.user || {};
 
+<<<<<<< Updated upstream
     // Fallback: หากเป็น Seller แต่ session ไม่มี sellerId ให้ดึงจาก DB
+=======
+    // Fallback: ถ้าเป็น Seller แต่ session ไม่มี sellerId ให้ค้นจาก DB
+>>>>>>> Stashed changes
     let effectiveSellerId = sellerId;
     if (userType === "Seller" && !effectiveSellerId) {
       const seller = await prisma.seller.findFirst({ where: { userId }, select: { id: true } });
@@ -60,7 +84,11 @@ export const createpost = async (req, res) => {
       Name,
       Phone,
       Bathroom,
+<<<<<<< Updated upstream
       // Propertytype, // ❌ intentionally excluded to match schema
+=======
+      // Propertytype, // ❌ not in schema
+>>>>>>> Stashed changes
       Other_related_expenses,
       categoryId,
       Interest,
@@ -76,7 +104,11 @@ export const createpost = async (req, res) => {
     const imageFiles = filesOf(req.files, "images");
     const videoFiles = filesOf(req.files, "videos");
 
+<<<<<<< Updated upstream
     // Parse propertyUnits (stringified JSON หรือ array ตรงๆ)
+=======
+    // parse propertyUnits (stringified JSON หรือ array)
+>>>>>>> Stashed changes
     let parsedPropertyUnits = [];
     if (typeof propertyUnits === "string" && propertyUnits.length > 0) {
       try {
@@ -97,7 +129,6 @@ export const createpost = async (req, res) => {
             District,
             Subdistrict,
             Address,
-            // Propertytype, // ❌ excluded
             Description,
             Usable_Area: toFloatOrNull(Usable_Area),
             Land_Size: toFloatOrNull(Land_Size),
@@ -129,6 +160,7 @@ export const createpost = async (req, res) => {
               parsedPropertyUnits && parsedPropertyUnits.length > 0
                 ? parsedPropertyUnits.length
                 : 1,
+
             ...(parsedPropertyUnits &&
               parsedPropertyUnits.length > 0 && {
                 PropertyUnit: {
@@ -163,7 +195,11 @@ export const createpost = async (req, res) => {
           include: { Image: true, Video: true },
         });
 
+<<<<<<< Updated upstream
         // สร้าง initial Deposit ผูกกับโพสต์ (ยังไม่ระบุผู้ซื้อ)
+=======
+        // Initial Deposit (ยังไม่ผูกกับผู้ซื้อ)
+>>>>>>> Stashed changes
         await tx.deposit.create({
           data: {
             postId: newPost.id,
@@ -179,7 +215,7 @@ export const createpost = async (req, res) => {
 
     return res.status(201).json(newPostWithDeposit);
   } catch (err) {
-    console.error(err);
+    console.error("createpost error:", err);
     return res.status(500).json({ message: "Server Error" });
   }
 };
@@ -200,7 +236,11 @@ const addTextQuery = (where, query) => ({
     { Property_Name: { contains: query, mode: "insensitive" } },
     { Description: { contains: query, mode: "insensitive" } },
     { Address: { contains: query, mode: "insensitive" } },
+<<<<<<< Updated upstream
     { Year_Built: { contains: query, mode: "insensitive" } }, // <- เวอร์ชันก่อนมี (คงไว้)
+=======
+    { Year_Built: { contains: query, mode: "insensitive" } }, // Year_Built เป็น string
+>>>>>>> Stashed changes
   ],
 });
 
@@ -224,7 +264,11 @@ const addPriceFilter = (where, { minPrice, maxPrice }) => {
   return Object.keys(Price).length ? { ...where, Price } : where;
 };
 
+<<<<<<< Updated upstream
 /* =============== SEARCH (public feed, with pagination) =============== */
+=======
+/* =============== SEARCH (public feed with pagination) =============== */
+>>>>>>> Stashed changes
 export const searchFilters = async (req, res) => {
   try {
     const {
@@ -269,9 +313,9 @@ export const searchFilters = async (req, res) => {
       prisma.propertyPost.count({ where }),
     ]);
 
-    res.json({ total, count: posts.length, posts });
+    res.json({ total, count: posts.length, posts, take, skip });
   } catch (err) {
-    console.log(err);
+    console.error("searchFilters error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -292,7 +336,7 @@ export const getbycategory = async (req, res) => {
     });
     res.json(properties);
   } catch (err) {
-    console.log(err);
+    console.error("getbycategory error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 };
@@ -305,7 +349,11 @@ export const getPost = async (req, res) => {
     const post = await prisma.propertyPost.findUnique({
       where: { id },
       select: {
+<<<<<<< Updated upstream
         id: true, // <- เพิ่ม id ให้เหมือนอีกเวอร์ชัน
+=======
+        id: true,
+>>>>>>> Stashed changes
         floor: true,
         Property_Name: true,
         Province: true,
@@ -345,7 +393,7 @@ export const getPost = async (req, res) => {
 
     res.json(post);
   } catch (err) {
-    console.log(err);
+    console.error("getPost error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 };
@@ -364,7 +412,11 @@ export const removepost = async (req, res) => {
     const imagePublicIds = images.map((i) => i.public_id).filter(Boolean);
     const videoPublicIds = videos.map((v) => v.public_id).filter(Boolean);
 
+<<<<<<< Updated upstream
     // ลบ Cloudinary แบบขนาน (เร็วกว่า) และไม่ล้มทรานแซกชันหลักถ้าลบไฟล์บางส่วนพลาด
+=======
+    // ลบทรัพยากรบน Cloudinary แบบขนาน
+>>>>>>> Stashed changes
     await Promise.allSettled([
       imagePublicIds.length
         ? cloudinary.api.delete_resources(imagePublicIds)
@@ -388,12 +440,16 @@ export const removepost = async (req, res) => {
       deletedVideos: videos,
     });
   } catch (err) {
-    console.error(err);
+    console.error("removepost error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
+<<<<<<< Updated upstream
 /* =============== UPDATE (supports media refresh) =============== */
+=======
+/* =============== UPDATE (รองรับ refresh รูป/วิดีโอ) =============== */
+>>>>>>> Stashed changes
 export const updatePost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -407,16 +463,25 @@ export const updatePost = async (req, res) => {
       return res.status(400).json({ message: "Invalid or missing request body" });
     }
 
+<<<<<<< Updated upstream
     const existingPost = await prisma.propertyPost.findUnique({ where: { id } });
     if (!existingPost) {
+=======
+    const existingPost = await prisma.propertyPost.findUnique({
+      where: { id },
+    });
+    if (!existingPost)
+>>>>>>> Stashed changes
       return res.status(404).json({ message: "Post not found" });
-    }
-
     if (existingPost.sellerId !== sellerId) {
       return res.status(403).json({ message: "Forbidden: You are not the owner of this post" });
     }
 
+<<<<<<< Updated upstream
     // ฟิลด์ที่อนุญาตให้อัปเดต (Propertytype ถูกถอดออกให้ตรง schema)
+=======
+    // ❗ Propertytype ถูกตัดออก (ไม่มีใน schema)
+>>>>>>> Stashed changes
     const allowedFields = [
       "Property_Name",
       "Price",
@@ -444,7 +509,10 @@ export const updatePost = async (req, res) => {
       "Name",
       "Phone",
       "Bathroom",
+<<<<<<< Updated upstream
       // "Propertytype", // ❌ excluded
+=======
+>>>>>>> Stashed changes
       "Other_related_expenses",
       "categoryId",
       "Interest",
@@ -500,7 +568,11 @@ export const updatePost = async (req, res) => {
       data: dataToUpdate,
     });
 
+<<<<<<< Updated upstream
     // ==== Media update (เฉพาะเมื่อมีไฟล์ใหม่) ====
+=======
+    // ===== อัปเดตรูป =====
+>>>>>>> Stashed changes
     const newImages = filesOf(req.files, "images");
     let imageResult = null;
     if (newImages.length > 0) {
@@ -523,6 +595,7 @@ export const updatePost = async (req, res) => {
       });
     }
 
+    // ===== อัปเดตวิดีโอ =====
     const newVideos = filesOf(req.files, "videos");
     let videoResult = null;
     if (newVideos.length > 0) {
@@ -554,7 +627,7 @@ export const updatePost = async (req, res) => {
       video: videoResult,
     });
   } catch (err) {
-    console.error(err);
+    console.error("updatePost error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 };
@@ -602,7 +675,11 @@ export const getHomePagePosts = async (req, res) => {
       return res.json(allPosts);
     }
 
+<<<<<<< Updated upstream
     // ✅ แก้บั๊ก: เทียบ Province กับ Preferred_Province (ตัวเก่ามีสลับฟิลด์)
+=======
+    // แก้บั๊กเปรียบเทียบเขต/จังหวัด
+>>>>>>> Stashed changes
     allPosts.sort((a, b) => {
       const aMatch =
         a.Province === buyerPreferences.Preferred_Province &&
@@ -617,7 +694,7 @@ export const getHomePagePosts = async (req, res) => {
 
     res.json(allPosts);
   } catch (err) {
-    console.log(err);
+    console.error("getHomePagePosts error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 };

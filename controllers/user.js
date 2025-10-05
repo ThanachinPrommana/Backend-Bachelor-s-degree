@@ -1,12 +1,15 @@
-// controllers/user.js (ESM) — MERGED
-// Notes:
-// - Consolidates "ปัจจุบัน" + "อันใหม่" with consistent session usage and field names
-// - Accepts both :id and :sellerId for updateStatusSeller (router flexibility)
-// - Normalizes file fields from uploaders (CloudinaryStorage or others)
-// - Fixes: documentUpload rollback field to depositId, getdeposits session id, relation names, etc.
+// controllers/user.js (ESM) — MERGED & SCHEMA-SAFE
+// Highlights:
+// - ใช้เฉพาะ Status_Seller (ตัด UserType/Status_Disposit ที่ไม่จำเป็นออก)
+// - รองรับทั้ง :sellerId และ :id ใน updateStatusSeller
+// - แก้การอ้างอิง session/userId ให้สม่ำเสมอ
+// - ฟิลเตอร์ความสัมพันธ์ Prisma ใช้รูปแบบ { Post: { is: { ... } } }
+// - getdeposits ใช้ req.session.user.userId และ include: { Post: true }
+// - การสร้าง/อัปเดต/ลบ booking/slot เป็นธุรกรรมที่ปลอดภัย
+// - อัปเดตสลิปสุดท้าย/ยืนยันสลิป ปรับจำนวนยูนิตและสถานะโพสต์เป็น SOLD_OUT เมื่อยูนิตหมด
 
 import prisma from "../config/prisma.js";
-import { Status_Seller /*, Status_Disposit*/ } from "@prisma/client"; // keep only used enums; Status_Disposit is avoided due to schema spelling variability
+import { Status_Seller } from "@prisma/client";
 import cloudinary from "../utils/cloudinary.js";
 
 /* ===================== helpers ===================== */
@@ -19,7 +22,6 @@ const getCloudinaryResourceDetails = async (publicId) => {
     return null;
   }
 };
-
 const normDate = (v) => {
   if (v === "" || v === null) return null;
   const d = new Date(v);
@@ -38,7 +40,7 @@ const normStr = (v) => (v === "" ? null : v);
 export const updateStatusSeller = async (req, res) => {
   try {
     const { Status } = req.body;
-    // support both :sellerId and :id
+    // รองรับทั้ง /:sellerId และ /:id
     const sellerId = req.params.sellerId || req.params.id;
 
     const normalizedStatus = Status?.toUpperCase();
@@ -58,6 +60,7 @@ export const updateStatusSeller = async (req, res) => {
       where: { id: sellerId },
       data: { Status: normalizedStatus },
     });
+
     res.json(seller);
   } catch (err) {
     console.log(err);
@@ -91,7 +94,6 @@ export const listUserSeller = async (req, res) => {
         userType: true,
         Seller: true,
         Payment: true,
-        Contract: true,
       },
     });
     res.json(listusers);
@@ -113,7 +115,6 @@ export const listUserBuyer = async (req, res) => {
         userType: true,
         Seller: true,
         Payment: true,
-        Contract: true,
       },
     });
     res.json(listusers);
@@ -123,7 +124,7 @@ export const listUserBuyer = async (req, res) => {
   }
 };
 
-// (ไม่ใช้)
+// (option) โปรไฟล์ผู้ขาย
 export const getSellerProfile = async (req, res) => {
   try {
     const { id } = req.params;
@@ -154,7 +155,7 @@ export const getSellerProfile = async (req, res) => {
   }
 };
 
-// (ไม่ใช้)
+// (option) โปรไฟล์ผู้ใช้ทั่วไป
 export const getUserProfile = async (req, res) => {
   try {
     const { id } = req.params;
@@ -195,7 +196,6 @@ export const getUserProfile = async (req, res) => {
 /* ==================================================== */
 /* =================== Profile Update ================= */
 /* ==================================================== */
-// Seller updates (User + Seller + optional Buyer normalized)
 export const updateSeller = async (req, res) => {
   try {
     const sessionUser = req.session.user;
@@ -502,12 +502,10 @@ export const updateimage = async (req, res) => {
     req.session.user.publicId = updatedUser.publicId;
     req.session.save((err) => {
       if (err) console.error("Session save error after image update:", err);
-      return res
-        .status(200)
-        .json({
-          message: "Image uploaded and user updated successfully",
-          user: { ...req.session.user },
-        });
+      return res.status(200).json({
+        message: "Image uploaded and user updated successfully",
+        user: { ...req.session.user },
+      });
     });
   } catch (err) {
     console.error("Upload image error:", err);
@@ -523,7 +521,7 @@ export const useruploadDocument = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized: Please log in." });
     const userId = loggedInUser.userId;
 
-    const { typeId, DocumentName, postId, unitId } = req.body;
+    const { DocumentName, postId, unitId } = req.body;
     const file = req.file;
     if (!file) return res.status(400).json({ message: "No file upload" });
     if (!unitId)
@@ -547,8 +545,7 @@ export const useruploadDocument = async (req, res) => {
       const document = await tx.documentUpload.create({
         data: {
           userId,
-          typeId,
-          DocumentName,
+          DocumentName: DocumentName || file.originalname || "document",
           DocumentUrl: documentUrl,
           CloudinaryPublicId: publicId,
           Review_Status: "PENDING",
@@ -600,11 +597,12 @@ export const useruploadDocument = async (req, res) => {
 // GET deposits ของผู้ใช้ (คง compatibility: propertyPost)
 export const getdeposits = async (req, res) => {
   try {
-    const userId = req.session.user?.userId; // fixed from .id
+    const userId = req.session.user?.userId;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const deposits = await prisma.deposit.findMany({
       where: { userId },
+<<<<<<< Updated upstream
       include: { Post: true }, // ชื่อ relation จริง
       orderBy: { createdAt: "desc" },
     });
@@ -616,6 +614,13 @@ export const getdeposits = async (req, res) => {
     }));
 
     res.json({ deposits: compat });
+=======
+      include: { Post: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.json({ deposits });
+>>>>>>> Stashed changes
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Server Error" });
@@ -647,7 +652,6 @@ export const getpostBySeller = async (req, res) => {
       },
       orderBy: { createdAt: "desc" },
     });
-
     res.json({ message: "Success", posts });
   } catch (err) {
     console.log(err);
@@ -805,22 +809,18 @@ export const createdeposite = async (req, res) => {
           message: "Action forbidden: Document does not belong to you.",
         });
     if (document.Review_Status !== "APPROVED")
-      return res
-        .status(403)
-        .json({
-          message: `Action forbidden: Document status is '${document.Review_Status}', not 'APPROVED'.`,
-        });
+      return res.status(403).json({
+        message: `Action forbidden: Document status is '${document.Review_Status}', not 'APPROVED'.`,
+      });
 
     const existingDeposit = await prisma.deposit.findFirst({
       where: { postId, Deposit_Status: { in: ["PENDING", "CONFIRMED"] } },
     });
     if (existingDeposit)
-      return res
-        .status(409)
-        .json({
-          message:
-            "ไม่สามารถทำรายการได้ เนื่องจากมีผู้ทำรายการมัดจำสำหรับโพสต์นี้อยู่แล้วหรือมัดจำสำเร็จแล้ว",
-        });
+      return res.status(409).json({
+        message:
+          "ไม่สามารถทำรายการได้ เนื่องจากมีผู้ทำรายการมัดจำสำหรับโพสต์นี้อยู่แล้วหรือมัดจำสำเร็จแล้ว",
+      });
 
     const newDeposit = await prisma.$transaction(async (tx) => {
       const deposit = await tx.deposit.create({
@@ -859,13 +859,10 @@ export const createdeposite = async (req, res) => {
       },
     });
 
-    res
-      .status(201)
-      .json({
-        message:
-          "Deposit created successfully. Waiting for seller confirmation.",
-        deposit: newDeposit,
-      });
+    res.status(201).json({
+      message: "Deposit created successfully. Waiting for seller confirmation.",
+      deposit: newDeposit,
+    });
   } catch (err) {
     console.error("Error creating deposit:", err);
     res.status(500).json({ message: "Server Error" });
@@ -890,13 +887,11 @@ export const updateDepositStatus = async (req, res) => {
 
     const allowedStatuses = ["CONFIRMED", "REJECTED"];
     if (!status || !allowedStatuses.includes(status))
-      return res
-        .status(400)
-        .json({
-          message: `Invalid status: สถานะต้องเป็น ${allowedStatuses.join(
-            " หรือ "
-          )} เท่านั้น`,
-        });
+      return res.status(400).json({
+        message: `Invalid status: สถานะต้องเป็น ${allowedStatuses.join(
+          " หรือ "
+        )} เท่านั้น`,
+      });
 
     const result = await prisma.$transaction(async (tx) => {
       const deposit = await tx.deposit.findUnique({
@@ -946,20 +941,22 @@ export const updateDepositStatus = async (req, res) => {
       return updatedDeposit;
     });
 
-    res
-      .status(200)
-      .json({
-        message: `Deposit status updated to ${status} successfully.`,
-        deposit: result,
-      });
+    res.status(200).json({
+      message: `Deposit status updated to ${status} successfully.`,
+      deposit: result,
+    });
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Server Error" });
   }
 };
 
+<<<<<<< Updated upstream
 // keep original name for FE compatibility
 // ค้นหามัดจำของผู้ใช้ (คง compatibility: propertyPost)
+=======
+// FE compatibility name
+>>>>>>> Stashed changes
 export const searchFillerDiposit = async (req, res) => {
   try {
     const user = req.session.user;
@@ -973,12 +970,16 @@ export const searchFillerDiposit = async (req, res) => {
     const where = { userId };
 
     if (q) {
-      where.OR = [
-        { Post: { Property_Name: { contains: q, mode: "insensitive" } } },
-      ];
+      // prisma relation filter
+      where.Post = {
+        is: { Property_Name: { contains: q, mode: "insensitive" } },
+      };
     }
 
+<<<<<<< Updated upstream
     // รับสถานะเป็นสตริงตรงๆ
+=======
+>>>>>>> Stashed changes
     const ALLOWED_DEPOSIT_STATUS = ["PENDING", "CONFIRMED", "REJECTED"];
     if (status && ALLOWED_DEPOSIT_STATUS.includes(status)) {
       where.Deposit_Status = status;
@@ -1080,10 +1081,11 @@ export const createDateTimeSlot = async (req, res) => {
         postId,
       });
     }
+    // กันทับซ้อนใน payload เอง
     for (let i = 0; i < slotsToCreate.length; i++) {
       for (let j = i + 1; j < slotsToCreate.length; j++) {
-        const a = slotsToCreate[i];
-        const b = slotsToCreate[j];
+        const a = slotsToCreate[i],
+          b = slotsToCreate[j];
         if (a.startTime < b.endTime && a.endTime > b.startTime)
           throw new Error("ข้อมูลช่วงเวลาที่ส่งมาทับซ้อนกันเอง");
       }
@@ -1207,17 +1209,15 @@ export const revmovedeposit = async (req, res) => {
         .status(403)
         .json({ message: "Forbidden: คุณไม่มีสิทธิ์ในการลบรายการมัดจำนี้" });
     if (deposit.Deposit_Status !== "PENDING")
-      return res
-        .status(409)
-        .json({
-          message: `ไม่สามารถลบได้ เนื่องจากรายการมัดจำนี้อยู่ในสถานะ "${deposit.Deposit_Status}" แล้ว`,
-        });
+      return res.status(409).json({
+        message: `ไม่สามารถลบได้ เนื่องจากรายการมัดจำนี้อยู่ในสถานะ "${deposit.Deposit_Status}" แล้ว`,
+      });
 
     await prisma.$transaction(async (tx) => {
       await tx.documentUpload.updateMany({
         where: { depositId },
         data: { depositId: null },
-      }); // fixed field
+      });
       await tx.deposit.delete({ where: { id: depositId } });
       await tx.notification.create({
         data: {
@@ -1408,12 +1408,10 @@ export const uploadFinalSlip = async (req, res) => {
       { timeout: 10000 }
     );
 
-    res
-      .status(200)
-      .json({
-        message: "อัปโหลดสลิปสำเร็จ! กรุณารอการยืนยันจากผู้ขาย",
-        booking: updatedBooking,
-      });
+    res.status(200).json({
+      message: "อัปโหลดสลิปสำเร็จ! กรุณารอการยืนยันจากผู้ขาย",
+      booking: updatedBooking,
+    });
   } catch (error) {
     console.error("Error uploading final slip:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการอัปโหลดสลิป" });
@@ -1446,11 +1444,9 @@ export const confirmedSlipBySeller = async (req, res) => {
         .status(403)
         .json({ message: "คุณไม่มีสิทธิ์ยืนยันการชำระเงินนี้" });
     if (booking.bookingStatus !== "PENDING_FINAL_VERIFICATION")
-      return res
-        .status(400)
-        .json({
-          message: `ไม่สามารถยืนยันได้ เนื่องจากสถานะปัจจุบันคือ '${booking.bookingStatus}'`,
-        });
+      return res.status(400).json({
+        message: `ไม่สามารถยืนยันได้ เนื่องจากสถานะปัจจุบันคือ '${booking.bookingStatus}'`,
+      });
 
     const unitToUpdate = booking.propertyUnit;
     const postToUpdate = booking.propertyUnit.propertyPost;
@@ -1485,14 +1481,12 @@ export const confirmedSlipBySeller = async (req, res) => {
         }),
       ]);
 
-    res
-      .status(200)
-      .json({
-        message: "ยืนยันสลิปและปิดการขายยูนิตสำเร็จ!",
-        booking: updatedBooking,
-        unit: updatedUnit,
-        post: updatedPost,
-      });
+    res.status(200).json({
+      message: "ยืนยันสลิปและปิดการขายยูนิตสำเร็จ!",
+      booking: updatedBooking,
+      unit: updatedUnit,
+      post: updatedPost,
+    });
   } catch (err) {
     console.error("Error confirming slip:", err);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
@@ -1517,8 +1511,11 @@ export const searchFilterDateTimeSlot = async (req, res) => {
     const whereClause = { sellerId };
 
     if (q) {
+      // relation filter ผ่าน Post
       whereClause.Post = {
-        Property_Name: { contains: q, mode: "insensitive" },
+        is: {
+          Property_Name: { contains: q, mode: "insensitive" },
+        },
       };
     }
 
