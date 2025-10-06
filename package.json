@@ -5,9 +5,12 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "cross-env NODE_ENV=development nodemon server.js",
-    "prod": "cross-env NODE_ENV=production node server.js"
+    "start": "node --no-warnings server.js",
+    "dev": "nodemon --quiet --no-warnings server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:studio": "prisma studio",
+    "prisma:deploy": "prisma migrate deploy"
   },
   "keywords": [],
   "author": "",
@@ -26,7 +29,9 @@
     "dotenv": "16.4.5",
     "express": "4.19.2",
     "express-formidable": "^1.2.0",
+    "express-rate-limit": "^8.1.0",
     "express-session": "^1.18.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "9.0.2",
     "morgan": "1.10.0",
     "multer": "^2.0.2",

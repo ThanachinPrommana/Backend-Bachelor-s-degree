@@ -1,58 +1,64 @@
+// controllers/auth.js (Merged ESM version)
+
 import prisma from "../config/prisma.js";
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { 
-    Parking_Needs as ParkingNeedsEnum, 
-    Nearby_Facilities as NearbyFacilitiesEnum, 
-    Lifestyle_Preferences as LifestylePreferencesEnum, 
-    Parking_Needs, 
-    Nearby_Facilities, 
-    Lifestyle_Preferences 
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import {
+  Parking_Needs as ParkingNeedsEnum,
+  Nearby_Facilities as NearbyFacilitiesEnum,
+  Lifestyle_Preferences as LifestylePreferencesEnum,
 } from "@prisma/client";
 import { sendResetEmail, verifyemail } from "../utils/email.js";
+
+/* ========== Helpers ========== */
+const getSessionUserId = (req) => {
+  const u = req.session?.user;
+  return u?.userId ?? u?.id ?? null; // รองรับทั้ง userId และ id
+};
+
+const FRONTEND_URL =
+  process.env.FRONTEND_URL?.replace(/\/+$/, "") || "http://localhost:5173";
+
+/* ========== preRegister ========== */
 export const preRegister = async (req, res) => {
   try {
-    const {
-      Email,
-      Password,
-      Phone,
-      First_name,
-      Last_name,
-    } = req.body;
+    const { Email, Password, Phone, First_name, Last_name } = req.body;
 
     if (!Email) return res.status(400).json({ message: "Email is required!!" });
-    if (!Password) return res.status(400).json({ message: "Password is required!!" });
+    if (!Password)
+      return res.status(400).json({ message: "Password is required!!" });
 
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        Email: Email
-      },
-    });
-
+    const existingUser = await prisma.user.findFirst({ where: { Email } });
     if (existingUser) {
       return res.status(400).json({ message: "Email already exists" });
     }
 
     const hashedPassword = await bcrypt.hash(Password, 10);
-    const token = jwt.sign({
-      Email: Email, Password: hashedPassword, Phone, First_name, Last_name, userType: "Buyer"
-    }, process.env.SECRETKEY, { expiresIn: "10m" })
+    const token = jwt.sign(
+      {
+        Email,
+        Password: hashedPassword,
+        Phone,
+        First_name,
+        Last_name,
+        userType: "Buyer",
+      },
+      process.env.SECRETKEY,
+      { expiresIn: "10m" }
+    );
 
-    const encodedToken = Buffer.from(token).toString('base64');
-    console.log("Test Token:", "+", encodedToken, "+")
-    const link = `http://localhost:5173/verifyemail?token=${encodedToken}`
+    const encodedToken = Buffer.from(token).toString("base64");
+    const link = `${FRONTEND_URL}/verifyemail?token=${encodedToken}`;
 
-    verifyemail(Email, link)
-    // Register Buyer
-
-
-    res.json({ message: "Verification email sent" });
-
+    await verifyemail(Email, link);
+    return res.json({ message: "Verification email sent" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    console.error("preRegister error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 };
+
+/* ========== verify & register (Buyer) ========== */
 export const verifyandregister = async (req, res) => {
   try {
     const {
@@ -63,276 +69,216 @@ export const verifyandregister = async (req, res) => {
       Family_Size,
       Preferred_Province,
       Preferred_District,
-      National_ID,
-      Company_Name,
-      RealEstate_License,
-      Status,
+      Preferred_Subdistrict,
       Parking_Needs,
       Nearby_Facilities,
       Lifestyle_Preferences,
-      Special_Requirements
-    } = req.body
-    const originalToken = Buffer.from(encodedToken, 'base64').toString('ascii');
-    const decoded = jwt.verify(originalToken, process.env.SECRETKEY)
-    const {
-      Email,
-      Password,
-      Phone,
-      First_name,
-      Last_name,
-      userType,
-    } = decoded
+      Special_Requirements,
+    } = req.body;
 
-    if (!Object.values(ParkingNeedsEnum).includes(Parking_Needs)) {
+    if (!encodedToken)
+      return res.status(400).json({ message: "Missing verification token" });
+
+    // ฟิลด์ Buyer สำคัญตามสคีมาล่าสุด (กันข้อมูลไม่ครบ)
+    if (
+      Monthly_Income == null ||
+      Family_Size == null ||
+      !Preferred_Province ||
+      !Preferred_District
+    ) {
+      return res.status(400).json({
+        message:
+          "Missing required Buyer fields: Monthly_Income, Family_Size, Preferred_Province, Preferred_District",
+      });
+    }
+
+    const originalToken = Buffer.from(encodedToken, "base64").toString("ascii");
+    const decoded = jwt.verify(originalToken, process.env.SECRETKEY);
+    const { Email, Password, Phone, First_name, Last_name } = decoded;
+
+    // ป้องกันสมัครซ้ำ (กันกดลิงก์ยืนยันมากกว่า 1 ครั้ง)
+    const dup = await prisma.user.findFirst({ where: { Email } });
+    if (dup) return res.status(400).json({ message: "Email already exists" });
+
+    // Validate enum แบบ optional (ถ้าไม่ส่งมา = ไม่เช็ค)
+    if (
+      Parking_Needs &&
+      !Object.values(ParkingNeedsEnum).includes(Parking_Needs)
+    ) {
       return res.status(400).json({ message: "Invalid Parking_Needs value" });
     }
-    if (!Object.values(NearbyFacilitiesEnum).includes(Nearby_Facilities)) {
-      return res.status(400).json({ message: "Invalid Nearby_Facilities value" });
+    if (
+      Nearby_Facilities &&
+      !Object.values(NearbyFacilitiesEnum).includes(Nearby_Facilities)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Invalid Nearby_Facilities value" });
     }
-    if (!Object.values(LifestylePreferencesEnum).includes(Lifestyle_Preferences)) {
-      return res.status(400).json({ message: "Invalid Lifestyle_Preferences value" });
+    if (
+      Lifestyle_Preferences &&
+      !Object.values(LifestylePreferencesEnum).includes(Lifestyle_Preferences)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Invalid Lifestyle_Preferences value" });
     }
+
     await prisma.user.create({
       data: {
-        Email: Email,
-        Password: Password,
-        Phone: Phone,
-        First_name: First_name,
-        Last_name: Last_name,
+        Email,
+        Password, // hashed จาก preRegister ที่ฝังมาใน token
+        Phone,
+        First_name,
+        Last_name,
         userType: "Buyer",
         Buyer: {
           create: {
             DateofBirth: DateofBirth ? new Date(DateofBirth) : null,
-            Occupation: Occupation,
-            Monthly_Income: Monthly_Income ? Number(Monthly_Income) : null,
-            Family_Size: Family_Size ? Number(Family_Size) : null,
-            Preferred_Province: Preferred_Province,
-            Preferred_District: Preferred_District,
-            Parking_Needs: Parking_Needs,
-            Nearby_Facilities: Nearby_Facilities,
-            Lifestyle_Preferences: Lifestyle_Preferences,
-            Special_Requirements: Special_Requirements
-          }
-        }
-      }
+            Occupation: Occupation || null,
+            Monthly_Income: Number(Monthly_Income),
+            Family_Size: Number(Family_Size),
+            Preferred_Province,
+            Preferred_District,
+            Preferred_Subdistrict: Preferred_Subdistrict || null,
+            Parking_Needs: Parking_Needs || null,
+            Nearby_Facilities: Nearby_Facilities || null,
+            Lifestyle_Preferences: Lifestyle_Preferences || null,
+            Special_Requirements: Special_Requirements || null,
+          },
+        },
+      },
     });
-    // if (userType === "Buyer") {
 
-    //   if (!Object.values(ParkingNeedsEnum).includes(Parking_Needs)) {
-    //     return res.status(400).json({ message: "Invalid Parking_Needs value" });
-    //   }
-
-    //   if (!Object.values(NearbyFacilitiesEnum).includes(Nearby_Facilities)) {
-    //     return res.status(400).json({ message: "Invalid Nearby_Facilities value" });
-    //   }
-
-    //   if (!Object.values(LifestylePreferencesEnum).includes(Lifestyle_Preferences)) {
-    //     return res.status(400).json({ message: "Invalid Lifestyle_Preferences value" });
-    //   }
-
-    //   await prisma.user.create({
-    //     data: {
-    //       Email: Email,
-    //       Password: Password,
-    //       Phone: Phone,
-    //       First_name: First_name,
-    //       Last_name: Last_name,
-    //       userType: "Buyer",
-    //       Buyer: {
-    //         create: {
-    //           DateofBirth: DateofBirth ? new Date(DateofBirth) : null,
-    //           Occupation: Occupation,
-    //           Monthly_Income: Monthly_Income ? Number(Monthly_Income) : null,
-    //           Family_Size: Family_Size ? Number(Family_Size) : null,
-    //           Preferred_Province: Preferred_Province,
-    //           Preferred_District: Preferred_District,
-    //           Parking_Needs: Parking_Needs,
-    //           Nearby_Facilities: Nearby_Facilities,
-    //           Lifestyle_Preferences: Lifestyle_Preferences,
-    //           Special_Requirements: Special_Requirements
-    //         }
-    //       }
-    //     }
-    //   });
-
-    //   return res.json({ message: "Register Buyer success" });
-    // }
-
-    // // Register Seller
-    // if (userType === "Seller") {
-    //   await prisma.user.create({
-    //     data: {
-    //       Email: Email,
-    //       Password: Password,
-    //       Phone: Phone,
-    //       First_name: First_name,
-    //       Last_name: Last_name,
-    //       userType: "Seller",
-    //       Seller: {
-    //         create: {
-    //           National_ID: National_ID,
-    //           Company_Name: Company_Name,
-    //           RealEstate_License: RealEstate_License,
-    //           Status: Status,
-    //           StartTime: new Date(),
-    //         }
-    //       }
-    //     }
-    //   });
-
-    return res.send("Register sucess")
+    return res.send("Register success");
   } catch (err) {
-    console.log(err)
-    res.status(500).json({
-      message: "Server Error"
-    })
+    console.error("verifyandregister error:", err);
+    return res.status(500).json({ message: "Server Error" });
   }
-}
+};
 
-// ใน controllers/authController.js
+/* ========== login ========== */
 export const login = async (req, res) => {
   try {
     const { Email, Password } = req.body;
     const user = await prisma.user.findFirst({
-      where: { Email: Email },
-      include: {
-        Seller: true,
-        Buyer: true,
-      }
+      where: { Email },
+      include: { Seller: true, Buyer: true },
     });
-    if (!user) {
-      return res.status(400).json({ message: "Email not found" });
-    }
+    if (!user) return res.status(400).json({ message: "Email not found" });
 
     const is_Match = await bcrypt.compare(Password, user.Password);
-    if (!is_Match) {
-      return res.status(400).json({ message: "Password invalid" });
-    }
+    if (!is_Match) return res.status(400).json({ message: "Password invalid" });
 
-    // --- สร้าง Payload ที่สมบูรณ์ ---
-    // 1. สร้างข้อมูลพื้นฐานของ User
-    let payload = {
-      userId: user.id, // ID หลักของ User, เปลี่ยนชื่อจาก id เพื่อความชัดเจน
+    const payload = {
+      userId: user.id,
       Email: user.Email,
       userType: user.userType,
       Phone: user.Phone,
       First_name: user.First_name,
       Last_name: user.Last_name,
-      image: user.image
+      image: user.image,
     };
-
-    // 2. เพิ่มข้อมูล Buyer (User ทุกคนควรจะมี)
     if (user.Buyer) {
-      payload.buyerId = user.Buyer.id; // 🔥 ID ของ Buyer สำหรับ Backend
-      payload.Buyer = user.Buyer;      // Object เต็มๆ สำหรับ Frontend
+      payload.buyerId = user.Buyer.id;
+      payload.Buyer = user.Buyer;
     }
-
-    // 3. ถ้าเป็น Seller ให้เพิ่มข้อมูล Seller ด้วย
     if (user.userType === "Seller" && user.Seller) {
-      payload.sellerId = user.Seller.id; // 🔥 ID ของ Seller สำหรับ Backend
-      payload.Seller = user.Seller;      // Object เต็มๆ สำหรับ Frontend
+      payload.sellerId = user.Seller.id;
+      payload.Seller = user.Seller;
     }
 
-    // 4. บันทึก Payload ที่สมบูรณ์ลงใน session
     req.session.user = payload;
-
-    req.session.save(err => {
+    req.session.save((err) => {
       if (err) {
         console.error("Session save error:", err);
-        return res.status(500).json({ message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ" });
+        return res
+          .status(500)
+          .json({ message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ" });
       }
-      console.log("Login successful, session created for user:", req.session.user.userId);
-      res.status(200).json({
-        message: "Login Sucess",
-        user: req.session.user
+      return res.status(200).json({
+        message: "Login Success",
+        user: req.session.user,
       });
     });
-
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server Error" });
+    console.error("login error:", err);
+    return res.status(500).json({ message: "Server Error" });
   }
 };
 
+/* ========== forgot password ========== */
 export const forgotPassword = async (req, res) => {
   try {
     const { Email } = req.body;
-    const user = await prisma.user.findFirst({ where: { Email: Email } });
-    if (!Email) {
-      return res.status(400).json({
-        message: "Email is required"
-      })
-    }
+    if (!Email) return res.status(400).json({ message: "Email is required" });
 
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    const user = await prisma.user.findFirst({ where: { Email } });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const token = jwt.sign({
-      userId: user.id, email: user.Email
-    }, process.env.SECRETKEY, { expiresIn: "1h" })
+    const token = jwt.sign(
+      { userId: user.id, email: user.Email },
+      process.env.SECRETKEY,
+      { expiresIn: "10m" } // ให้ตรงกับ expiresAt ที่บันทึก 10 นาที
+    );
 
     await prisma.passwordResetToken.create({
       data: {
-        token: token,
+        token,
         userId: user.id,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000)
-      }
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
     });
-    console.log("+" + token + "+")
 
-
-    const resetLink = `http://localhost:5173/resetpassword?token=${token}`;
+    const resetLink = `${FRONTEND_URL}/resetpassword?token=${token}`;
     await sendResetEmail(Email, resetLink);
 
-    res.json({ message: 'Reset link sent to your email.' });
-
+    return res.json({ message: "Reset link sent to your email." });
   } catch (err) {
-    console.error(err)
-    res.status(500).json({
-      message: "Server Error"
-    })
+    console.error("forgotPassword error:", err);
+    return res.status(500).json({ message: "Server Error" });
   }
-}
-
-
-// ตั้งรหัสผ่านใหม่
-export const resetPassword = async (req, res) => {
-  const { token, Password } = req.body;
-
-  const tokenEntry = await prisma.passwordResetToken.findFirst({ where: { token } });
-
-  if (!tokenEntry) {
-    return res.status(400).json({ message: 'Token invalid' });
-  }
-  if (tokenEntry.expiresAt < new Date()) {
-    return res.status(400).json({ message: 'Token expired' });
-  }
-
-  const hashed = await bcrypt.hash(Password, 10);
-
-  await prisma.user.update({
-    where: { id: tokenEntry.userId },
-    data: { Password: hashed }
-  });
-
-  await prisma.passwordResetToken.delete({ where: { token } });
-
-  res.json({ message: 'Password updated' });
 };
 
+/* ========== reset password ========== */
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, Password } = req.body;
+    if (!token || !Password)
+      return res.status(400).json({ message: "Missing token or password" });
 
+    const tokenEntry = await prisma.passwordResetToken.findFirst({
+      where: { token },
+    });
+    if (!tokenEntry) return res.status(400).json({ message: "Token invalid" });
+    if (tokenEntry.expiresAt < new Date())
+      return res.status(400).json({ message: "Token expired" });
+
+    const hashed = await bcrypt.hash(Password, 10);
+    await prisma.user.update({
+      where: { id: tokenEntry.userId },
+      data: { Password: hashed },
+    });
+
+    // ใช้ deleteMany เผื่อกรณี token ซ้ำ/หลงเหลือ
+    await prisma.passwordResetToken.deleteMany({ where: { token } });
+
+    return res.json({ message: "Password updated" });
+  } catch (err) {
+    console.error("resetPassword error:", err);
+    return res.status(500).json({ message: "Server Error" });
+  }
+};
+
+/* ========== getProfile ========== */
 export const getProfile = async (req, res) => {
   try {
-    // 🔥 --- ส่วนที่แก้ไข --- 🔥
-    // เปลี่ยนจากการดึง id เป็น userId และตั้งชื่อตัวแปรใหม่ว่า id เพื่อให้โค้ดส่วนที่เหลือใช้ได้เหมือนเดิม
-    const { userId: id } = req.session.user;
-
+    const id = getSessionUserId(req);
     if (!id) return res.status(401).json({ message: "Unauthorized" });
 
-    // query database ใหม่
     const user = await prisma.user.findUnique({
-      where: { id }, // <-- โค้ดส่วนนี้ยังใช้ตัวแปร id ได้เหมือนเดิม
+      where: { id },
       include: {
-
         Seller: {
           select: {
             id: true,
@@ -341,34 +287,37 @@ export const getProfile = async (req, res) => {
             RealEstate_License: true,
             Status: true,
             nationalIdImage: true,
+            // จากไฟล์ที่จะ merge:
             DateTimeSlot: true,
             Booking: true,
-          }
+          },
         },
         Buyer: {
           select: {
+            id: true,
             DateofBirth: true,
             Occupation: true,
             Monthly_Income: true,
             Family_Size: true,
+            Preferred_Province: true,
             Preferred_District: true,
+            Preferred_Subdistrict: true,
             Parking_Needs: true,
             Nearby_Facilities: true,
             Lifestyle_Preferences: true,
-            Booking: true
-          }
+            Special_Requirements: true,
+            // จากไฟล์ที่จะ merge:
+            Booking: true,
+          },
         },
+        // จากไฟล์ที่จะ merge:
         Deposit: {
           select: {
             id: true,
             Deposit_Status: true,
             Deposit_Amount: true,
-            Post: {
-              select: {
-                Property_Name: true
-              }
-            }
-          }
+            Post: { select: { Property_Name: true } },
+          },
         },
         Notification: true,
         PropertyPost: {
@@ -384,13 +333,11 @@ export const getProfile = async (req, res) => {
             Sell_Rent: true,
             Image: true,
             Deposit: true,
-            sellerId:true
-          }
+            sellerId: true,
+          },
         },
         DocumentUpload: {
-          orderBy: {
-            createdAt: "desc"
-          },
+          orderBy: { createdAt: "desc" },
           select: {
             id: true,
             DocumentName: true,
@@ -400,117 +347,121 @@ export const getProfile = async (req, res) => {
             User: {
               select: {
                 First_name: true,
-                Last_name: true
-              }
-            }
-          }
-        }
-      }
+                Last_name: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!user) return res.status(404).json({ message: "User not found" });
-
     if (user.Password) delete user.Password;
 
-    console.log("Successfully fetched profile for user:", user.id);
-    res.status(200).json({ user });
+    // Sync session ให้เป็นปัจจุบัน
+    req.session.user = {
+      userId: user.id,
+      Email: user.Email,
+      userType: user.userType,
+      Phone: user.Phone,
+      First_name: user.First_name,
+      Last_name: user.Last_name,
+      image: user.image,
+      ...(user.Buyer ? { buyerId: user.Buyer.id, Buyer: user.Buyer } : {}),
+      ...(user.Seller ? { sellerId: user.Seller.id, Seller: user.Seller } : {}),
+    };
+    req.session.save((err) => {
+      if (err) console.error("Session re-save error in getProfile:", err);
+    });
+
+    return res.status(200).json({ user });
   } catch (error) {
-    console.error("Error in getProfile:", error);
-    res.status(500).json({ message: "Server Error" });
+    console.error("getProfile error:", error);
+    return res.status(500).json({ message: "Server Error" });
   }
 };
 
-
+/* ========== logout ========== */
 export const logout = (req, res) => {
-  console.log("Logout route called");
-  console.log("Session before destroy:", req.session);
   try {
     req.session.destroy((err) => {
       if (err) {
         console.error("Session destruction error:", err);
-        return res.status(500).json({ message: "Could not log out, please try again." });
+        return res
+          .status(500)
+          .json({ message: "Could not log out, please try again." });
       }
-      console.log("Session destroyed");
-      res.clearCookie('connect.sid', { path: '/' });
-      res.status(200).json({ message: "Logout successful" });
+      res.clearCookie("connect.sid", { path: "/" });
+      return res.status(200).json({ message: "Logout successful" });
     });
   } catch (err) {
-    console.log("Catch error:", err)
+    console.log("Catch error:", err);
+    return res.status(500).json({ message: "Server Error" });
   }
 };
 
+/* ========== registerSeller ========== */
 export const registerSeller = async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: "กรุณาแนบรูปภาพบัตรประชาชน" });
-  }
-
-  const userId = req.session.user.userId;
-  console.log("User ID from session:", userId);
-  if (!userId) {
-    return res.status(401).json({ message: "Unauthorized. Please log in." });
-  }
-
-  const { National_ID, Company_Name, RealEstate_License } = req.body;
-  if (!National_ID) {
-    return res.status(400).json({ message: "กรุณากรอกข้อมูลบัตรประชาชน" });
-  }
-
   try {
-    // 2. ดึงข้อมูล URL และ publicId จาก req.file ที่ Cloudinary สร้างให้
-    const nationalIdImageUrl = req.file.path;
-    const nationalIdPublicId = req.file.filename;
+    if (!req.file) {
+      return res.status(400).json({ message: "กรุณาแนบรูปภาพบัตรประชาชน" });
+    }
+
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized. Please log in." });
+    }
+
+    const { National_ID, Company_Name, RealEstate_License } = req.body;
+    if (!National_ID) {
+      return res.status(400).json({ message: "กรุณากรอกข้อมูลบัตรประชาชน" });
+    }
 
     const result = await prisma.$transaction(async (tx) => {
-      // ตรวจสอบข้อมูลซ้ำ
+      // ตรวจสอบข้อมูลซ้ำ (เลขบัตร/ใบอนุญาต/userId)
       const existingSeller = await tx.seller.findFirst({
         where: {
-          OR: [
-            { National_ID },
-            { RealEstate_License },
-            { userId }
-          ]
-        }
+          OR: [{ National_ID }, { RealEstate_License }, { userId }],
+        },
       });
-      if (existingSeller) {
-        if (existingSeller.userId === userId) throw new Error("This user is already registered as a seller.");
-        if (existingSeller.National_ID === National_ID) throw new Error("This National ID is already registered.");
-        throw new Error("This Real Estate License is already registered.");
-      }
+      if (existingSeller) throw new Error("Seller already registered");
 
-      // 3. สร้าง Seller พร้อมข้อมูลรูปบัตรประชาชน
       const newSeller = await tx.seller.create({
         data: {
-          userId: userId,
-          National_ID: National_ID,
-          Company_Name: Company_Name,
-          RealEstate_License: RealEstate_License,
+          userId,
+          National_ID,
+          Company_Name,
+          RealEstate_License,
           Status: "PENDING",
-          nationalIdImage: nationalIdImageUrl, // บันทึก URL
-          publicId: nationalIdPublicId        // บันทึก Public ID
+          nationalIdImage: req.file.path, // Cloudinary URL
+          publicId: req.file.filename, // Cloudinary public_id
         },
       });
 
-      // 4. อัปเดต userType
       await tx.user.update({
         where: { id: userId },
-        data: {
-          userType: "Seller",
-        },
+        data: { userType: "Seller" },
       });
 
       return newSeller;
     });
-    req.session.user.userType = "Seller";
-    req.session.user.sellerId = result.id; 
 
-    res.status(201).json({
-      message: "Seller registration successful! Your application is pending review.",
+    // อัปเดต session ให้เป็นผู้ขายด้วย
+    req.session.user = {
+      ...(req.session.user || {}),
+      userId,
+      userType: "Seller",
+      sellerId: result.id,
+    };
+    req.session.save();
+
+    return res.status(201).json({
+      message:
+        "Seller registration successful! Your application is pending review.",
       seller: result,
     });
   } catch (err) {
-    console.error(err);
-    // กรณีนี้ควรลบรูปที่อัปโหลดไปแล้วออกจาก Cloudinary ด้วยจะดีที่สุด
-    // (เป็น advance logic ที่สามารถเพิ่มทีหลังได้)
-    res.status(400).json({ message: err.message || "Server error" });
+    console.error("registerSeller error:", err);
+    return res.status(400).json({ message: err.message || "Server error" });
   }
-}
+};
