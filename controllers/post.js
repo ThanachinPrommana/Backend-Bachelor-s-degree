@@ -210,6 +210,11 @@ const handleTextQuery = (where, query) => {
       { Property_Name: { contains: query, mode: "insensitive" } },
       { Description: { contains: query, mode: "insensitive" } },
       { Address: { contains: query, mode: "insensitive" } },
+      { Province: { continue: query, mode: "insensitive" } },
+      { District: { continue: query, mode: "insensitive" } },
+      { Subdistrict: { continue: query, mode: "insensitive" } },
+      { Address: { continue: query, mode: "insensitive" } },
+      { Year_Built: { continue: query, mode: "insensitive" } },
       // เพิ่ม Year_Built ถ้าต้องการค้นหาด้วย แต่ต้องแน่ใจว่า Type เป็น String
       // { Year_Built: { contains: query, mode: "insensitive" } }, 
     ],
@@ -324,7 +329,7 @@ export const getPost = async (req, res) => {
     const post = await prisma.propertyPost.findUnique({
       where: { id },
       select: {
-        id:true,
+        id: true,
         floor: true, // ✅ จำนวนชั้น
         Property_Name: true,
         Province: true,
@@ -352,8 +357,8 @@ export const getPost = async (req, res) => {
         Sell_Rent: true,
         user: {
           select: {
-            First_name: true, Last_name: true, 
-            image:true
+            First_name: true, Last_name: true,
+            image: true
           }
         },
         Phone: true,
@@ -363,7 +368,7 @@ export const getPost = async (req, res) => {
         Status_post: true,
         PropertyUnit: {
           select: {
-            id:true,
+            id: true,
             Unit_Number: true,
             Status: true
           }
@@ -592,10 +597,15 @@ export const getHomePagePosts = async (req, res) => {
         select: {
           Preferred_Province: true,
           Preferred_District: true,
+          // Parking_Needs: true,
+          Nearby_Facilities: true,
+          Lifestyle_Preferences: true
         }
       });
     }
     console.log("Buyer Preferences:", buyerPreferences);
+
+
 
     // 4. ดึงโพสต์ทั้งหมดที่เผยแพร่แล้ว
     const allPosts = await prisma.propertyPost.findMany({
@@ -613,6 +623,8 @@ export const getHomePagePosts = async (req, res) => {
             secure_url: true
           }
         },
+        Nearby_Landmarks: true,
+        Additional_Amenities: true,
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -622,17 +634,44 @@ export const getHomePagePosts = async (req, res) => {
       return res.json(allPosts);
     }
 
-    // 6. จัดเรียงโพสต์ใหม่: โพสต์ที่ตรงกับความชอบจะขึ้นก่อน
+    // ฟังก์ชันคำนวณคะแนน ให้รองรับ enum
+    const calculateMatchScore = (post, prefs) => {
+      let score = 0;
+
+      // 1. ตรวจสอบจังหวัดและอำเภอ
+      if (post.Province === prefs.Preferred_Province) {
+        score += 10;
+        if (post.District === prefs.Preferred_District) {
+          score += 5;
+        }
+      }
+
+
+
+      // 3. ตรวจสอบสิ่งอำนวยความสะดวกใกล้เคียง (เหมือนเดิม)
+      if (prefs.Nearby_Facilities && post.Nearby_Landmarks) {
+        const matchingFacilities = post.Nearby_Landmarks.filter(facility =>
+          prefs.Nearby_Facilities.includes(facility)
+        );
+        score += matchingFacilities.length * 2;
+      }
+
+      // 4. ตรวจสอบไลฟ์สไตล์
+      if (prefs.Lifestyle_Preferences && post.Additional_Amenities) {
+        const matchingAmenities = post.Additional_Amenities.filter(amenity =>
+          prefs.Lifestyle_Preferences.includes(amenity)
+        );
+        score += matchingAmenities.length;
+      }
+
+      return score;
+    };
+
+    // การจัดเรียงโดยใช้คะแนน (เหมือนเดิม)
     allPosts.sort((postA, postB) => {
-      const aIsMatch = postA.Province === buyerPreferences.Preferred_Province &&
-        postA.District === buyerPreferences.Preferred_District;
-
-      const bIsMatch = postB.Province === buyerPreferences.Preferred_District &&
-        postB.District === buyerPreferences.Preferred_District;
-
-      if (aIsMatch && !bIsMatch) return -1; // A มาก่อน B
-      if (!aIsMatch && bIsMatch) return 1; // B มาก่อน A
-      return 0; // ไม่เปลี่ยนลำดับ
+      const scoreA = calculateMatchScore(postA, buyerPreferences);
+      const scoreB = calculateMatchScore(postB, buyerPreferences);
+      return scoreB - scoreA;
     });
 
     res.json(allPosts);
