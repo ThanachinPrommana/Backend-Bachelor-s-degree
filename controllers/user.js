@@ -594,7 +594,6 @@ export const useruploadDocument = async (req, res) => {
   }
 };
 
-// GET deposits ของผู้ใช้ (คง compatibility: propertyPost)
 export const getdeposits = async (req, res) => {
   try {
     const userId = req.session.user?.userId;
@@ -602,31 +601,16 @@ export const getdeposits = async (req, res) => {
 
     const deposits = await prisma.deposit.findMany({
       where: { userId },
-<<<<<<< Updated upstream
-      include: { Post: true }, // ชื่อ relation จริง
-      orderBy: { createdAt: "desc" },
-    });
-
-    // ทำ alias: propertyPost -> Post เพื่อรองรับ FE เดิม
-    const compat = deposits.map((d) => ({
-      ...d,
-      propertyPost: d.Post,
-    }));
-
-    res.json({ deposits: compat });
-=======
       include: { Post: true },
       orderBy: { createdAt: "desc" },
     });
 
     res.json({ deposits });
->>>>>>> Stashed changes
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Server Error" });
   }
 };
-
 
 export const getpostBySeller = async (req, res) => {
   try {
@@ -951,12 +935,7 @@ export const updateDepositStatus = async (req, res) => {
   }
 };
 
-<<<<<<< Updated upstream
-// keep original name for FE compatibility
-// ค้นหามัดจำของผู้ใช้ (คง compatibility: propertyPost)
-=======
 // FE compatibility name
->>>>>>> Stashed changes
 export const searchFillerDiposit = async (req, res) => {
   try {
     const user = req.session.user;
@@ -976,14 +955,9 @@ export const searchFillerDiposit = async (req, res) => {
       };
     }
 
-<<<<<<< Updated upstream
-    // รับสถานะเป็นสตริงตรงๆ
-=======
->>>>>>> Stashed changes
     const ALLOWED_DEPOSIT_STATUS = ["PENDING", "CONFIRMED", "REJECTED"];
-    if (status && ALLOWED_DEPOSIT_STATUS.includes(status)) {
+    if (status && ALLOWED_DEPOSIT_STATUS.includes(status))
       where.Deposit_Status = status;
-    }
 
     if (minAmount || maxAmount) {
       where.Deposit_Amount = {};
@@ -997,19 +971,12 @@ export const searchFillerDiposit = async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
 
-    // ทำ alias: propertyPost -> Post เพื่อรองรับ FE เดิม
-    const compat = deposits.map((d) => ({
-      ...d,
-      propertyPost: d.Post,
-    }));
-
-    res.status(200).json({ message: "Success", data: compat });
+    res.status(200).json({ message: "Success", data: deposits });
   } catch (err) {
     console.error("Error searching user deposits:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
-
 
 /* ================== DateTimeSlot & Booking =========== */
 export const createDateTimeSlot = async (req, res) => {
