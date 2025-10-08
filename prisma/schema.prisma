@@ -226,13 +226,13 @@ model PropertyPost {
   Bathroom      Int
   Description   String
 
-  Deposit_Amount Float? // สำหรับขาย (ดาวน์)
-  Deposit_Rent   Float? // สำหรับเช่า (มัดจำ)
+  Deposit_Amount Float? // สำหรับขาย (ดาวน์) 
+  Deposit_Rent   Float? // สำหรับเช่า (มัดจำ) //เอาออก
 
-  Contract_Seller        String?
-  LinkMap                String?
-  Latitude               Float?
-  Longitude              Float?
+  Contract_Seller        String?      //เอาออก
+  LinkMap                String?      
+  Latitude               Float?       //เอาออก
+  Longitude              Float?       //เอาออก
   Province               String
   District               String
   Subdistrict            String

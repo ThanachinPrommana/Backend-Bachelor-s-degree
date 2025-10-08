@@ -8,6 +8,19 @@ import {
   filesOf,
   connectIf,
 } from "../utils/parse.js";
+const uploadWithAssetId = async (file, folder = "property_assets") => {
+  const result = await cloudinary.uploader.upload(file.path, {
+    folder,
+    resource_type: file.mimetype.startsWith('video') ? 'video' : 'image',
+  })
+  console.log('Cloudinary result:', result);
+  return {
+    asset_id: result.asset_id,
+    public_id: result.public_id,
+    url: result.url,
+    secure_url: result.secure_url,
+  };
+}
 
 /* ========= Allowed enums (must match schema.prisma) ========= */
 const ALLOWED_LANDMARKS = [
@@ -96,6 +109,13 @@ export const createpost = async (req, res) => {
     const imageFiles = filesOf(req.files, "images");
     const videoFiles = filesOf(req.files, "videos");
 
+    const imageData = await Promise.all(
+      imageFiles.map((file) => uploadWithAssetId(file, 'property_images'))
+    );
+
+    const videoData = await Promise.all(
+      videoFiles.map((file) => uploadWithAssetId(file, 'property_videos'))
+    );
     // parse propertyUnits (stringified JSON หรือ array)
     let parsedPropertyUnits = [];
     if (typeof propertyUnits === "string" && propertyUnits.length > 0) {
@@ -156,12 +176,12 @@ export const createpost = async (req, res) => {
 
             ...(parsedPropertyUnits &&
               parsedPropertyUnits.length > 0 && {
-                PropertyUnit: {
-                  create: parsedPropertyUnits.map((unit) => ({
-                    Unit_Number: unit.Unit_Number,
-                  })),
-                },
-              }),
+              PropertyUnit: {
+                create: parsedPropertyUnits.map((unit) => ({
+                  Unit_Number: unit.Unit_Number,
+                })),
+              },
+            }),
 
             ...(connectIf(categoryId)
               ? { Category: connectIf(categoryId) }
@@ -171,20 +191,22 @@ export const createpost = async (req, res) => {
             seller: { connect: { id: effectiveSellerId } },
 
             Image: {
-              create: imageFiles.map((file) => ({
-                asset_id: file.asset_id,
-                public_id: file.public_id || file.filename,
-                url: file.path || file.url,
-                secure_url: file.secure_url || file.path || file.url,
-              })),
+              create: imageData
+              // create: imageFiles.map((file) => ({
+              //   asset_id: file.asset_id,
+              //   public_id: file.public_id || file.filename,
+              //   url: file.path || file.url,
+              //   secure_url: file.secure_url || file.path || file.url,
+              // })),
             },
             Video: {
-              create: videoFiles.map((file) => ({
-                asset_id: file.asset_id,
-                public_id: file.public_id || file.filename,
-                url: file.path || file.url,
-                secure_url: file.secure_url || file.path || file.url,
-              })),
+              create: videoData
+              // create: videoFiles.map((file) => ({
+              //   asset_id: file.asset_id,
+              //   public_id: file.public_id || file.filename,
+              //   url: file.path || file.url,
+              //   secure_url: file.secure_url || file.path || file.url,
+              // })),
             },
           },
           include: { Image: true, Video: true },
@@ -236,7 +258,6 @@ const addCategoryFilter = (where, categoryId) => {
   return { ...where, categoryId: { in: ids } };
 };
 
-<<<<<<< HEAD
 // =============== SEARCH HELPERS ===============
 const handleTextQuery = (where, query) => {
   return {
@@ -254,7 +275,8 @@ const handleTextQuery = (where, query) => {
       // { Year_Built: { contains: query, mode: "insensitive" } }, 
     ],
   };
-=======
+};
+
 const addLocationFilter = (where, { province, district, subdistrict }) => {
   const f = {};
   if (province) f.Province = { contains: province, mode: "insensitive" };
@@ -262,7 +284,6 @@ const addLocationFilter = (where, { province, district, subdistrict }) => {
   if (subdistrict)
     f.Subdistrict = { contains: subdistrict, mode: "insensitive" };
   return { ...where, ...f };
->>>>>>> origin/Second
 };
 
 const addPriceFilter = (where, { minPrice, maxPrice }) => {
@@ -291,7 +312,7 @@ export const searchFilters = async (req, res) => {
     const skip = Math.max(Number(skipRaw) || 0, 0);
 
     let where = { Status_post: "CONFIRMED" };
-    if (query) where = addTextQuery(where, query);
+    if (query) where = handleTextQuery(where, query);
     if (categoryId) where = addCategoryFilter(where, categoryId);
     if (province || district || subdistrict)
       where = addLocationFilter(where, { province, district, subdistrict });
@@ -356,11 +377,7 @@ export const getPost = async (req, res) => {
       where: { id },
       select: {
         id: true,
-<<<<<<< HEAD
         floor: true, // ✅ จำนวนชั้น
-=======
-        floor: true,
->>>>>>> origin/Second
         Property_Name: true,
         Province: true,
         Deposit: true,
@@ -385,22 +402,17 @@ export const getPost = async (req, res) => {
         Additional_Amenities: true,
         Parking_Space: true,
         Sell_Rent: true,
-<<<<<<< HEAD
         user: {
           select: {
             First_name: true, Last_name: true,
             image: true
           }
         },
-=======
-        user: { select: { First_name: true, Last_name: true, image: true } },
->>>>>>> origin/Second
         Phone: true,
         Latitude: true,
         Longitude: true,
         Other_related_expenses: true,
         Status_post: true,
-<<<<<<< HEAD
         PropertyUnit: {
           select: {
             id: true,
@@ -408,9 +420,6 @@ export const getPost = async (req, res) => {
             Status: true
           }
         },
-=======
-        PropertyUnit: { select: { id: true, Unit_Number: true, Status: true } },
->>>>>>> origin/Second
         NumberOfUnits: true,
         Video: { select: { url: true, secure_url: true } },
       },
@@ -446,8 +455,8 @@ export const removepost = async (req, res) => {
         : Promise.resolve(),
       videoPublicIds.length
         ? cloudinary.api.delete_resources(videoPublicIds, {
-            resource_type: "video",
-          })
+          resource_type: "video",
+        })
         : Promise.resolve(),
     ]);
 
@@ -630,8 +639,8 @@ export const updatePost = async (req, res) => {
         oldVideos.map((v) =>
           v.public_id
             ? cloudinary.uploader.destroy(v.public_id, {
-                resource_type: "video",
-              })
+              resource_type: "video",
+            })
             : Promise.resolve()
         )
       );
@@ -676,52 +685,33 @@ export const getHomePagePosts = async (req, res) => {
   try {
     const userFromSession = req.session.user;
     const userId = userFromSession ? userFromSession.userId : null;
-
     let buyerPreferences = null;
+
     if (userId) {
       buyerPreferences = await prisma.buyer.findUnique({
         where: { userId },
         select: {
           Preferred_Province: true,
           Preferred_District: true,
-<<<<<<< HEAD
-          // Parking_Needs: true,
+          Preferred_Subdistrict: true, // ดึงข้อมูลส่วนนี้มาแล้ว
           Nearby_Facilities: true,
           Lifestyle_Preferences: true
         }
-=======
-        },
->>>>>>> origin/Second
       });
     }
 
-<<<<<<< HEAD
-
-
-    // 4. ดึงโพสต์ทั้งหมดที่เผยแพร่แล้ว
-=======
->>>>>>> origin/Second
     const allPosts = await prisma.propertyPost.findMany({
       where: { Status_post: "CONFIRMED" },
       select: {
         id: true,
         Province: true,
         District: true,
+        Subdistrict: true, // ดึงข้อมูลส่วนนี้มาแล้ว
         Property_Name: true,
         Price: true,
-<<<<<<< HEAD
-        Image: {
-          take: 1,
-          select: {
-            url: true,
-            secure_url: true
-          }
-        },
+        Image: { take: 1, select: { secure_url: true } },
         Nearby_Landmarks: true,
         Additional_Amenities: true,
-=======
-        Image: { take: 1, select: { url: true, secure_url: true } },
->>>>>>> origin/Second
       },
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -731,22 +721,22 @@ export const getHomePagePosts = async (req, res) => {
       return res.json(allPosts);
     }
 
-<<<<<<< HEAD
-    // ฟังก์ชันคำนวณคะแนน ให้รองรับ enum
     const calculateMatchScore = (post, prefs) => {
       let score = 0;
 
-      // 1. ตรวจสอบจังหวัดและอำเภอ
+      // 1. ตรวจสอบจังหวัด, อำเภอ, และตำบล
       if (post.Province === prefs.Preferred_Province) {
-        score += 10;
+        score += 10; // จังหวัดตรงกัน +10 คะแนน
         if (post.District === prefs.Preferred_District) {
-          score += 5;
+          score += 5; // อำเภอตรงกัน +5 คะแนน
+          // (เพิ่ม) ตรวจสอบตำบล/แขวง
+          if (post.Subdistrict === prefs.Preferred_Subdistrict) {
+            score += 3; // ตำบล/แขวงตรงกัน +3 คะแนน
+          }
         }
       }
 
-
-
-      // 3. ตรวจสอบสิ่งอำนวยความสะดวกใกล้เคียง (เหมือนเดิม)
+      // 2. ตรวจสอบสิ่งอำนวยความสะดวกใกล้เคียง
       if (prefs.Nearby_Facilities && post.Nearby_Landmarks) {
         const matchingFacilities = post.Nearby_Landmarks.filter(facility =>
           prefs.Nearby_Facilities.includes(facility)
@@ -754,7 +744,7 @@ export const getHomePagePosts = async (req, res) => {
         score += matchingFacilities.length * 2;
       }
 
-      // 4. ตรวจสอบไลฟ์สไตล์
+      // 3. ตรวจสอบไลฟ์สไตล์
       if (prefs.Lifestyle_Preferences && post.Additional_Amenities) {
         const matchingAmenities = post.Additional_Amenities.filter(amenity =>
           prefs.Lifestyle_Preferences.includes(amenity)
@@ -765,24 +755,10 @@ export const getHomePagePosts = async (req, res) => {
       return score;
     };
 
-    // การจัดเรียงโดยใช้คะแนน (เหมือนเดิม)
     allPosts.sort((postA, postB) => {
       const scoreA = calculateMatchScore(postA, buyerPreferences);
       const scoreB = calculateMatchScore(postB, buyerPreferences);
       return scoreB - scoreA;
-=======
-    // แก้บั๊กเปรียบเทียบเขต/จังหวัด
-    allPosts.sort((a, b) => {
-      const aMatch =
-        a.Province === buyerPreferences.Preferred_Province &&
-        a.District === buyerPreferences.Preferred_District;
-      const bMatch =
-        b.Province === buyerPreferences.Preferred_Province &&
-        b.District === buyerPreferences.Preferred_District;
-      if (aMatch && !bMatch) return -1;
-      if (!aMatch && bMatch) return 1;
-      return 0;
->>>>>>> origin/Second
     });
 
     res.json(allPosts);
