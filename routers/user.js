@@ -43,7 +43,8 @@ import {
   removeTimeSlot,
   removeBooking,
   uploadFinalSlip,
-  confirmedSlipBySeller
+  confirmedSlipBySeller,
+  searchFilterDateTimeSlot
 } from "../controllers/user.js";
 
 import { createStripePaymentIntent } from "../controllers/payment.js";
@@ -130,5 +131,6 @@ router.post(
 );
 //confirmedSlipBySeller
 router.post("/confirmed-slip/:bookingId", isAuthenticated, confirmedSlipBySeller)
-
+// Search DateTimeSlot Seller
+router.post("/search/slot/seller", isAuthenticated, searchFilterDateTimeSlot);
 export default router;
