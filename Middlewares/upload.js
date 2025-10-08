@@ -1,63 +1,40 @@
-import multer from 'multer';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
-import cloudinary from '../utils/cloudinary.js';
+// Middlewares/upload.js
+import multer from "multer";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import cloudinary from "../utils/cloudinary.js";
 
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
+  cloudinary,
   params: {
     folder: "profile_images",
-    allowed_formats: ["jpg", "jpeg", "png"],
+    resource_type: "image",
+    // ✅ รองรับ webp (และ heic/heif ถ้าต้องการ)
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "heic", "heif"],
+    // ลดงานฝั่ง client/Server-side ให้ Cloudinary ช่วยบีบอัด/แปลงอัตโนมัติ
+    quality: "auto:good",
+    fetch_format: "auto",
+    // resize แบบไม่ครอปเกินกรอบ
     transformation: [{ width: 500, height: 500, crop: "limit" }],
-  },  
-} )
-//   params: async (req, file) => {
-//     let folder
-//     let resource_type
-//     let allowed_formats
+    // ใช้ชื่อไฟล์เดิมและเขียนทับรูปเก่าได้ (ปรับตามที่ต้องการ)
+    use_filename: true,
+    unique_filename: false,
+    overwrite: true,
+  },
+});
 
-//     if (file.mimetype.startsWith("image")) {
-//       folder = "property_images"
-//       resource_type = "image"
-//       allowed_formats = ["jpg", "jpeg", "png", "gif"]
-//     } else if (file.mimetype.startsWith("video")) {
-//       folder = "property_videos"
-//       resource_type = "video"
-//       allowed_formats = ["mp4", "mov", "avi", "mkv"]
-//     } else {
-//       return {
-//         error: "Invalid file type"
-//       }
-//     }
-//     return {
-//       folder: folder,
-//       resource_type: resource_type,
-//       allowed_formats: allowed_formats,
-//     };
-//   }
-// });
-
-// const fileFilter = (req, file, cb) => {
-//   if (file.mimetype.startsWith("image") || file.mimetype.startsWith("video")) {
-//     cb(null, true); // อนุญาตให้อัปโหลด
-//   } else {
-//     cb(new Error("File type not supported!"), false); // ไม่อนุญาต
-//   }
-// };
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith("image")) {
+  if (file.mimetype.startsWith("image/")) {
     cb(null, true);
   } else {
     cb(new Error("กรุณาอัปโหลดเฉพาะไฟล์รูปภาพเท่านั้น!"), false);
   }
 };
 
-// 3. สร้าง Multer instance โดยใช้ storage และ fileFilter ที่เราสร้าง
 const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: {
-    fileSize: 1024 * 1024 * 100 // จำกัดขนาดไฟล์ 100MB 
-  }
+  storage,
+  fileFilter,
+  // ไม่จำเป็นต้องตั้งสูงมาก เพราะฝั่ง client คุณย่อภาพแล้ว
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB (ปรับได้)
 });
 
 export default upload;

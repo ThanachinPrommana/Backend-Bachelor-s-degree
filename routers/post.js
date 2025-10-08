@@ -1,35 +1,58 @@
+// routes/post.js (ESM) — MERGED
+
 import express from "express";
 import propertyUpload from "../Middlewares/propertyUploader.js";
-import { 
-    createpost, 
-    getbycategory, 
-    getPost, 
-    removepost, 
-    updatePost, 
-    searchFilters, 
-    getallcategory,
-    getHomePagePosts
+import {
+  createpost,
+  getbycategory,
+  getPost,
+  removepost,
+  updatePost,
+  searchFilters,
+  getallcategory,
+  getHomePagePosts, // ★ added
 } from "../controllers/post.js";
 import { isAuthenticated } from "../Middlewares/authCheck.js";
 
 const router = express.Router();
 
-router.post("/propertypost", isAuthenticated, propertyUpload.fields([
+// Create property post
+router.post(
+  "/propertypost",
+  isAuthenticated,
+  propertyUpload.fields([
     { name: "images", maxCount: 5 },
-    { name: 'videos', maxCount: 2 }
-]), createpost)
+    { name: "videos", maxCount: 2 },
+  ]),
+  createpost
+);
 
-router.get("/post/category/:categoryId", getbycategory)
-router.get("/propertypost/:id", getPost)
-router.get("/allcategory",getallcategory)
+// Get posts by category
+router.get("/post/category/:categoryId", getbycategory);
 
+// Get single property post
+router.get("/propertypost/:id", getPost);
 
-router.delete("/propertypost/:id", removepost)
+// Get all categories
+router.get("/allcategory", getallcategory);
 
-router.patch("/propertypost/:id", propertyUpload.fields([
+// Delete property post
+router.delete("/propertypost/:id", removepost);
+
+// Update property post
+router.patch(
+  "/propertypost/:id",
+  propertyUpload.fields([
     { name: "images", maxCount: 5 },
-    { name: 'videos', maxCount: 2 }
-]), updatePost)
-router.post("/search/filters", searchFilters)
+    { name: "videos", maxCount: 2 },
+  ]),
+  updatePost
+);
+
+// Search posts by filters
+router.post("/search/filters", searchFilters);
+
+// Home page posts
 router.get("/homepage/posts", getHomePagePosts);
+
 export default router;
