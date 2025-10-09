@@ -1,100 +1,36 @@
-// --- server.js (ESM, merged & hardened with AdminJS) ---
-
+// server.js  (ESM, based on your friend's version, with safe fixes)
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
 import { readdirSync } from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import "dotenv/config";
 import session from "express-session";
-import bcrypt from "bcryptjs";
+import path from "path";
+import { fileURLToPath } from "url";
 
+import AdminJS from "adminjs";
+import { Database, Resource, getModelByName } from "@adminjs/prisma";
+import AdminJSExpress from "@adminjs/express";
+// import { bundle } from '@adminjs/bundler'; // (optional) not used
 import prisma from "./config/prisma.js";
 import { startNotificationSchedulers } from "./Scheduler/notificationScheduler.js";
 import { handleStripeWebhook } from "./controllers/payment.js";
-
-// ===== AdminJS (with Prisma adapter) =====
-import AdminJS from "adminjs";
-import AdminJSExpress from "@adminjs/express";
-import { Database, Resource, getModelByName } from "@adminjs/prisma";
+import bcrypt from "bcryptjs";
+import th from "./locales/th.js";
 
 const PORT = process.env.PORT || 8200;
 const app = express();
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
-
-// ✅ อยู่หลัง proxy (Render/Heroku/Nginx/Cloudflare) ให้ตั้งไว้เพื่อให้ secure cookie ทำงานถูก
-app.set("trust proxy", 1);
-
-// --- Logger ---
-app.use(morgan("dev"));
-
-// --- CORS (allowlist) ---
-const DEFAULT_ORIGIN = "http://localhost:5173";
-const ORIGINS = (
-  process.env.CLIENT_ORIGINS ||
-  process.env.CLIENT_URL ||
-  DEFAULT_ORIGIN
-)
-  .split(",")
-  .map((s) => s.trim());
-
-app.use(
-  cors({
-    origin(origin, cb) {
-      // อนุญาต no-origin (Postman/Server-to-server) และ origin ที่อยู่ใน allowlist
-      if (!origin || ORIGINS.includes(origin)) return cb(null, true);
-      return cb(new Error(`CORS blocked for origin: ${origin}`));
-    },
-    credentials: true, // ✅ ให้ cookie ข้าม origin ได้
-  })
-);
-
-// --- Path helpers ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ===== Public static (สำหรับหน้า login ของ AdminJS) =====
-app.use(express.static(path.join(__dirname, "public")));
-
-// --- Stripe webhook (raw body) ต้องมาก่อน express.json() ---
-app.post(
-  "/api/stripe/webhook",
-  express.raw({ type: "application/json" }),
-  handleStripeWebhook
-);
-
-// --- Body parser ---
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// --- Session ---
-const sessionOptions = {
-  secret: process.env.SESSION_SECRET || "some-strong-secret",
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    maxAge: 2 * 60 * 60 * 1000, // 2 ชั่วโมง
-    httpOnly: true,
-    secure: IS_PRODUCTION, // ✅ prod ต้องใช้ https
-    sameSite: IS_PRODUCTION ? "none" : "lax", // dev = lax, prod = none (รองรับ cross-site cookie)
-    // domain: process.env.COOKIE_DOMAIN || undefined,
-  },
-};
-app.use(session(sessionOptions));
-
 /* =================================================================
- *  AdminJS Setup (Prisma)
+ * 1) AdminJS setup
  * ================================================================= */
 AdminJS.registerAdapter({ Database, Resource });
+console.log("Successfully imported locale file:", th);
 
-// สร้าง instance ของ AdminJS + ลงทะเบียน resources หลัก ๆ
 const admin = new AdminJS({
-  rootPath: "/admin",
-  branding: {
-    companyName: "Yuu Yenn Property",
-    logo: false,
-  },
   resources: [
     {
       resource: { model: getModelByName("User"), client: prisma },
@@ -153,24 +89,92 @@ const admin = new AdminJS({
       options: { navigation: "การนัดหมาย", name: "การจอง" },
     },
   ],
+  rootPath: "/admin",
+  branding: { companyName: "Yuu Yenn Property", logo: false },
+  locale: {
+    language: "th",
+    availableLanguages: ["th"],
+    translations: { th: th.translations },
+  },
 });
 
-// ===== Admin: Custom login (session-based) =====
+/* =================================================================
+ * 2) Middlewares (logger, CORS, static)
+ * ================================================================= */
+app.use(morgan("dev"));
+
+// ✅ allowlist ได้หลายโดเมน (fallback localhost)
+const ALLOWLIST = (
+  process.env.CLIENT_ORIGINS ||
+  process.env.CLIENT_URL ||
+  "http://localhost:5173"
+)
+  .split(",")
+  .map((s) => s.trim());
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin || ALLOWLIST.includes(origin)) return cb(null, true);
+      cb(new Error(`CORS blocked: ${origin}`));
+    },
+    credentials: true,
+  })
+);
+
+app.use(express.static(path.join(__dirname, "public")));
+
+/* =================================================================
+ * 3) ⚠️ Stripe Webhook ต้องมาก่อน parsers
+ * ================================================================= */
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  handleStripeWebhook
+);
+
+/* =================================================================
+ * 4) Body parsers (หลัง webhook)
+ * ================================================================= */
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+/* =================================================================
+ * 5) Session
+ * ================================================================= */
+if (IS_PRODUCTION) {
+  app.set("trust proxy", 1);
+}
+const baseCookie = { maxAge: 2 * 60 * 60 * 1000, httpOnly: true };
+const cookie = IS_PRODUCTION
+  ? { ...baseCookie, secure: true, sameSite: "none" }
+  : { ...baseCookie, secure: false, sameSite: "lax" };
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "some-strong-secret",
+    resave: false,
+    saveUninitialized: false, // ✅ เปลี่ยนเป็น false
+    cookie,
+  })
+);
+
+/* =================================================================
+ * 6) Admin login/session guard
+ * ================================================================= */
 const authenticateAdmin = async (email, password) => {
-  // ต้องแน่ใจว่า Email เป็น unique ใน schema
   const user = await prisma.user.findUnique({ where: { Email: email } });
   if (!user) return null;
   const isValid = await bcrypt.compare(password, user.Password);
-  if (isValid && user.userType === "Admin") {
-    return { id: user.id, email: user.Email, userType: user.userType };
-  }
-  return null;
+  return isValid && user.userType === "Admin"
+    ? { id: user.id, email: user.Email, userType: user.userType }
+    : null;
 };
 
 const publicAdminRouter = express.Router();
 publicAdminRouter.get("/login", (req, res) => {
   if (req.session.adminUser) return res.redirect(admin.options.rootPath);
-  res.sendFile(path.join(__dirname, "public", "login.html"));
+  res.sendFile(path.join(__dirname, "/public/login.html"));
 });
 publicAdminRouter.post("/login", async (req, res) => {
   const { email, password } = req.body || {};
@@ -179,61 +183,59 @@ publicAdminRouter.post("/login", async (req, res) => {
     req.session.adminUser = adminUser;
     return res.redirect(admin.options.rootPath);
   }
-  return res.redirect("/admin/login");
+  res.redirect("/admin/login");
 });
 publicAdminRouter.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/admin/login"));
 });
 
-const requireLogin = (req, _res, next) => {
+const requireLogin = (req, res, next) => {
   if (req.session && req.session.adminUser) return next();
-  return _res.redirect("/admin/login");
+  res.redirect("/admin/login");
 };
-
 const protectedAdminRouter = AdminJSExpress.buildRouter(admin);
 
-// === Mount Admin routes ===
-app.use(admin.options.rootPath, publicAdminRouter); // public routes: /admin/login
-app.use(admin.options.rootPath, requireLogin, protectedAdminRouter); // protected dashboard
+app.use(admin.options.rootPath, publicAdminRouter);
+app.use(admin.options.rootPath, requireLogin, protectedAdminRouter);
 
 /* =================================================================
- *  App Routers
+ * 7) App Routers (รองรับทั้ง ESM default และ CJS module.exports)
  * ================================================================= */
-
 const routersPath = path.join(__dirname, "routers");
-
-async function mountRouters() {
-  const files = readdirSync(routersPath).filter((f) => f.endsWith(".js"));
-  for (const filename of files) {
-    const routeModule = await import(`./routers/${filename}`);
-    const router = routeModule.default || routeModule;
-    if (typeof router === "function") {
-      app.use("/api", router);
-      console.log(`➡️  Mounted router: /api (file: ${filename})`);
-    } else {
-      console.warn(`⚠️  Skip ${filename}: no router export found`);
+(async () => {
+  for (const filename of readdirSync(routersPath)) {
+    if (filename.endsWith(".js")) {
+      const mod = await import(`./routers/${filename}`);
+      const router = mod.default || mod; // ✅ เผื่อกรณีเป็น CJS
+      if (typeof router === "function") {
+        app.use("/api", router);
+        console.log(`➡️ Mounted: /api from routers/${filename}`);
+      } else {
+        console.warn(`⚠️ Skip routers/${filename}: no router function export`);
+      }
     }
   }
-}
+})();
 
-// --- Health check ---
-app.get("/healthz", (_req, res) => {
-  res.json({ ok: true, time: new Date().toISOString() });
+/* =================================================================
+ * 8) Health & (optional) error handler
+ * ================================================================= */
+app.get("/healthz", (_req, res) =>
+  res.json({ ok: true, time: new Date().toISOString() })
+);
+
+// (ทางเลือก) Error handler ช่วย debug
+app.use((err, _req, res, _next) => {
+  console.error("❌ Error:", err?.message);
+  res
+    .status(err.status || 500)
+    .json({ message: err.message || "Server Error" });
 });
 
-// --- Start server ---
-async function start() {
-  try {
-    await mountRouters();
-    app.listen(PORT, () => {
-      console.log(`🚀 Server listening on port ${PORT}`);
-      console.log(`✅ Admin panel at ${admin.options.rootPath}`);
-      startNotificationSchedulers();
-    });
-  } catch (err) {
-    console.error("Fatal error during bootstrap:", err);
-    process.exit(1);
-  }
-}
-
-start();
+/* =================================================================
+ * 9) Start
+ * ================================================================= */
+app.listen(PORT, () => {
+  console.log(`🚀 Server on port ${PORT}`);
+  startNotificationSchedulers();
+});

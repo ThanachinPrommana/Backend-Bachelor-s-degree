@@ -1,14 +1,13 @@
 // routes/category.js (ESM)
-
 import express from "express";
+const router = express.Router();
+
 import {
   create,
   removecategory,
   list,
   getById,
 } from "../controllers/category.js";
-
-const router = express.Router();
 
 // Create category
 router.post("/category", create);
