@@ -1,4 +1,4 @@
-// routes/post.js (ESM) — FIXED to match server & controllers
+// routers/post.js (ESM) — FIXED to match server & controllers
 import express from "express";
 import propertyUpload from "../Middlewares/propertyUploader.js";
 import {
@@ -15,12 +15,9 @@ import { isAuthenticated } from "../Middlewares/authCheck.js";
 
 const router = express.Router();
 
-/**
- * Create property post
- * NOTE: โปรเจ็กต์เดิมใช้ :userId ในพาธ → ใส่กลับให้ตรงกับ controller
- */
+// routers/post.js
 router.post(
-  "/propertypost/:userId",
+  "/propertypost",
   isAuthenticated,
   propertyUpload.fields([
     { name: "images", maxCount: 5 },

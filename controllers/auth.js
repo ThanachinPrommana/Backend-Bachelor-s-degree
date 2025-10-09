@@ -49,7 +49,7 @@ export const preRegister = async (req, res) => {
 
     const encodedToken = Buffer.from(token).toString("base64");
     const link = `${FRONTEND_URL}/verifyemail?token=${encodedToken}`;
-    console.log("token:",encodedToken)
+    console.log("token:", encodedToken);
     await verifyemail(Email, link);
     return res.json({ message: "Verification email sent" });
   } catch (err) {
@@ -260,7 +260,6 @@ export const resetPassword = async (req, res) => {
       data: { Password: hashed },
     });
 
-    // ใช้ deleteMany เผื่อกรณี token ซ้ำ/หลงเหลือ
     await prisma.passwordResetToken.deleteMany({ where: { token } });
 
     return res.json({ message: "Password updated" });
@@ -287,7 +286,6 @@ export const getProfile = async (req, res) => {
             RealEstate_License: true,
             Status: true,
             nationalIdImage: true,
-            // จากไฟล์ที่จะ merge:
             DateTimeSlot: true,
             Booking: true,
           },
@@ -306,11 +304,9 @@ export const getProfile = async (req, res) => {
             Nearby_Facilities: true,
             Lifestyle_Preferences: true,
             Special_Requirements: true,
-            // จากไฟล์ที่จะ merge:
             Booking: true,
           },
         },
-        // จากไฟล์ที่จะ merge:
         Deposit: {
           select: {
             id: true,
@@ -344,8 +340,8 @@ export const getProfile = async (req, res) => {
             Review_Status: true,
             DocumentUrl: true,
             createdAt: true,
-            postId:true,
-            unitId:true,
+            postId: true,
+            unitId: true,
             User: {
               select: {
                 First_name: true,

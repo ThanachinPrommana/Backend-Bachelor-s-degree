@@ -1,4 +1,4 @@
-// routes/category.js (ESM)
+// routers/category.js (ESM)
 import express from "express";
 const router = express.Router();
 

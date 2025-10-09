@@ -1,4 +1,4 @@
-// controllers/post.js (merged, safe with current schema)
+// controllers/post.js
 import prisma from "../config/prisma.js";
 import cloudinary from "../utils/cloudinary.js";
 import {
@@ -8,19 +8,20 @@ import {
   filesOf,
   connectIf,
 } from "../utils/parse.js";
+
 const uploadWithAssetId = async (file, folder = "property_assets") => {
   const result = await cloudinary.uploader.upload(file.path, {
     folder,
-    resource_type: file.mimetype.startsWith('video') ? 'video' : 'image',
-  })
-  console.log('Cloudinary result:', result);
+    resource_type: file.mimetype?.startsWith("video") ? "video" : "image",
+  });
+  console.log("Cloudinary result:", result?.asset_id, result?.resource_type);
   return {
     asset_id: result.asset_id,
     public_id: result.public_id,
     url: result.url,
     secure_url: result.secure_url,
   };
-}
+};
 
 /* ========= Allowed enums (must match schema.prisma) ========= */
 const ALLOWED_LANDMARKS = [
@@ -37,7 +38,7 @@ const ALLOWED_AMENITIES = [
   "Pet_Friendly",
 ];
 
-/* =============== CREATE (Post + initial Deposit + optional Units) =============== */
+/* =============== CREATE =============== */
 export const createpost = async (req, res) => {
   try {
     if (!req.session.user) {
@@ -48,7 +49,7 @@ export const createpost = async (req, res) => {
 
     const { userId, userType, sellerId } = req.session.user || {};
 
-    // Fallback: ถ้าเป็น Seller แต่ session ไม่มี sellerId ให้ค้นจาก DB
+    // หา sellerId กรณีไม่มีใน session
     let effectiveSellerId = sellerId;
     if (userType === "Seller" && !effectiveSellerId) {
       const seller = await prisma.seller.findFirst({
@@ -91,31 +92,38 @@ export const createpost = async (req, res) => {
       Name,
       Phone,
       Bathroom,
-      // Propertytype, // ❌ not in schema
       Other_related_expenses,
       categoryId,
       Interest,
       floor,
-      propertyUnits, // optional array or JSON string
+      propertyUnits,
     } = req.body;
 
-    if (!Deposit_Amount || Number(Deposit_Amount) <= 0) {
+    /* ✅ ตรวจเฉพาะกรณีขายเท่านั้น */
+    if (
+      String(Sell_Rent).toUpperCase() === "SALE" &&
+      (!Deposit_Amount || Number(Deposit_Amount) <= 0)
+    ) {
       return res
         .status(400)
-        .json({ message: "This post requires a valid deposit amount." });
+        .json({ message: "กรุณาระบุเงินดาวน์สำหรับการขาย" });
     }
 
     // รองรับทั้ง multer.fields() และ multer.array()
     const imageFiles = filesOf(req.files, "images");
     const videoFiles = filesOf(req.files, "videos");
 
-    const imageData = await Promise.all(
-      imageFiles.map((file) => uploadWithAssetId(file, 'property_images'))
-    );
+    const imageData = imageFiles.length
+      ? await Promise.all(
+          imageFiles.map((f) => uploadWithAssetId(f, "property_images"))
+        )
+      : [];
+    const videoData = videoFiles.length
+      ? await Promise.all(
+          videoFiles.map((f) => uploadWithAssetId(f, "property_videos"))
+        )
+      : [];
 
-    const videoData = await Promise.all(
-      videoFiles.map((file) => uploadWithAssetId(file, 'property_videos'))
-    );
     // parse propertyUnits (stringified JSON หรือ array)
     let parsedPropertyUnits = [];
     if (typeof propertyUnits === "string" && propertyUnits.length > 0) {
@@ -130,101 +138,75 @@ export const createpost = async (req, res) => {
       parsedPropertyUnits = propertyUnits;
     }
 
-    const newPostWithDeposit = await prisma.$transaction(
-      async (tx) => {
-        const newPost = await tx.propertyPost.create({
-          data: {
-            Property_Name,
-            Province,
-            District,
-            Subdistrict,
-            Address,
-            Description,
-            Usable_Area: toFloatOrNull(Usable_Area),
-            Land_Size: toFloatOrNull(Land_Size),
-            Bedrooms: toIntOrNull(Bedrooms),
-            Bathroom: toIntOrNull(Bathroom),
-            Total_Rooms: toIntOrNull(Total_Rooms),
-            Year_Built, // string per schema
+    const newPostWithDeposit = await prisma.$transaction(async (tx) => {
+      const newPost = await tx.propertyPost.create({
+        data: {
+          Property_Name,
+          Province,
+          District,
+          Subdistrict,
+          Address,
+          Description,
+          Usable_Area: toFloatOrNull(Usable_Area),
+          Land_Size: toFloatOrNull(Land_Size),
+          Bedrooms: toIntOrNull(Bedrooms),
+          Bathroom: toIntOrNull(Bathroom),
+          Total_Rooms: toIntOrNull(Total_Rooms),
+          Year_Built,
+          Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
+          Additional_Amenities: toEnumArray(
+            Additional_Amenities,
+            ALLOWED_AMENITIES
+          ),
+          Deposit_Amount: toFloatOrNull(Deposit_Amount),
+          Contract_Seller,
+          LinkMap,
+          Price: toFloatOrNull(Price),
+          Parking_Space: toIntOrNull(Parking_Space),
+          Sell_Rent,
+          Link_line,
+          Link_facbook,
+          Name,
+          Phone,
+          Latitude: toFloatOrNull(Latitude),
+          Longitude: toFloatOrNull(Longitude),
+          Other_related_expenses,
+          Interest: toFloatOrNull(Interest),
+          floor: toIntOrNull(floor),
 
-            Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
-            Additional_Amenities: toEnumArray(
-              Additional_Amenities,
-              ALLOWED_AMENITIES
-            ),
+          NumberOfUnits:
+            parsedPropertyUnits?.length > 0 ? parsedPropertyUnits.length : 1,
 
-            Deposit_Amount: toFloatOrNull(Deposit_Amount),
-            Contract_Seller,
-            LinkMap,
-            Price: toFloatOrNull(Price),
-            Parking_Space: toIntOrNull(Parking_Space),
-            Sell_Rent,
-            Link_line,
-            Link_facbook,
-            Name,
-            Phone,
-            Latitude: toFloatOrNull(Latitude),
-            Longitude: toFloatOrNull(Longitude),
-            Other_related_expenses,
-            Interest: toFloatOrNull(Interest),
-            floor: toIntOrNull(floor),
-
-            NumberOfUnits:
-              parsedPropertyUnits && parsedPropertyUnits.length > 0
-                ? parsedPropertyUnits.length
-                : 1,
-
-            ...(parsedPropertyUnits &&
-              parsedPropertyUnits.length > 0 && {
-              PropertyUnit: {
-                create: parsedPropertyUnits.map((unit) => ({
-                  Unit_Number: unit.Unit_Number,
-                })),
-              },
-            }),
-
-            ...(connectIf(categoryId)
-              ? { Category: connectIf(categoryId) }
-              : {}),
-
-            user: { connect: { id: userId } },
-            seller: { connect: { id: effectiveSellerId } },
-
-            Image: {
-              create: imageData
-              // create: imageFiles.map((file) => ({
-              //   asset_id: file.asset_id,
-              //   public_id: file.public_id || file.filename,
-              //   url: file.path || file.url,
-              //   secure_url: file.secure_url || file.path || file.url,
-              // })),
+          ...(parsedPropertyUnits?.length > 0 && {
+            PropertyUnit: {
+              create: parsedPropertyUnits.map((unit) => ({
+                Unit_Number: unit.Unit_Number,
+              })),
             },
-            Video: {
-              create: videoData
-              // create: videoFiles.map((file) => ({
-              //   asset_id: file.asset_id,
-              //   public_id: file.public_id || file.filename,
-              //   url: file.path || file.url,
-              //   secure_url: file.secure_url || file.path || file.url,
-              // })),
-            },
-          },
-          include: { Image: true, Video: true },
-        });
+          }),
 
-        // Initial Deposit (ยังไม่ผูกกับผู้ซื้อ)
-        await tx.deposit.create({
-          data: {
-            postId: newPost.id,
-            Deposit_Amount: toFloatOrNull(Deposit_Amount),
-            Deposit_Status: "PENDING",
-          },
-        });
+          ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
 
-        return newPost;
-      },
-      { timeout: 10000 }
-    );
+          user: { connect: { id: userId } },
+          seller: { connect: { id: effectiveSellerId } },
+
+          Image: imageData.length ? { create: imageData } : undefined,
+          Video: videoData.length ? { create: videoData } : undefined,
+        },
+        include: { Image: true, Video: true },
+      });
+
+      // สร้าง deposit เริ่มต้น (ยังไม่ผูก buyer)
+      await tx.deposit.create({
+        data: {
+          postId: newPost.id,
+          Deposit_Amount: toFloatOrNull(Deposit_Amount),
+          Deposit_Status: "PENDING",
+        },
+      });
+
+      return newPost;
+    });
 
     return res.status(201).json(newPostWithDeposit);
   } catch (err) {
@@ -234,7 +216,7 @@ export const createpost = async (req, res) => {
 };
 
 /* =============== LIST (placeholder) =============== */
-export const list = async (req, res) => {
+export const list = async (_req, res) => {
   try {
     res.json([]);
   } catch (err) {
@@ -258,7 +240,6 @@ const addCategoryFilter = (where, categoryId) => {
   return { ...where, categoryId: { in: ids } };
 };
 
-// =============== SEARCH HELPERS ===============
 const handleTextQuery = (where, query) => {
   return {
     ...where,
@@ -266,13 +247,10 @@ const handleTextQuery = (where, query) => {
       { Property_Name: { contains: query, mode: "insensitive" } },
       { Description: { contains: query, mode: "insensitive" } },
       { Address: { contains: query, mode: "insensitive" } },
-      { Province: { continue: query, mode: "insensitive" } },
-      { District: { continue: query, mode: "insensitive" } },
-      { Subdistrict: { continue: query, mode: "insensitive" } },
-      { Address: { continue: query, mode: "insensitive" } },
-      { Year_Built: { continue: query, mode: "insensitive" } },
-      // เพิ่ม Year_Built ถ้าต้องการค้นหาด้วย แต่ต้องแน่ใจว่า Type เป็น String
-      // { Year_Built: { contains: query, mode: "insensitive" } }, 
+      { Province: { contains: query, mode: "insensitive" } },
+      { District: { contains: query, mode: "insensitive" } },
+      { Subdistrict: { contains: query, mode: "insensitive" } },
+      { Year_Built: { contains: query, mode: "insensitive" } },
     ],
   };
 };
@@ -377,7 +355,7 @@ export const getPost = async (req, res) => {
       where: { id },
       select: {
         id: true,
-        floor: true, // ✅ จำนวนชั้น
+        floor: true,
         Property_Name: true,
         Province: true,
         Deposit: true,
@@ -402,24 +380,16 @@ export const getPost = async (req, res) => {
         Additional_Amenities: true,
         Parking_Space: true,
         Sell_Rent: true,
-        user: {
-          select: {
-            First_name: true, Last_name: true,
-            image: true
-          }
-        },
+        Name: true,
+        Link_line: true,
+        Link_facbook: true,
+        Interest: true,
         Phone: true,
         Latitude: true,
         Longitude: true,
         Other_related_expenses: true,
         Status_post: true,
-        PropertyUnit: {
-          select: {
-            id: true,
-            Unit_Number: true,
-            Status: true
-          }
-        },
+        PropertyUnit: { select: { id: true, Unit_Number: true, Status: true } },
         NumberOfUnits: true,
         Video: { select: { url: true, secure_url: true } },
       },
@@ -443,7 +413,9 @@ export const removepost = async (req, res) => {
     const images = await prisma.image.findMany({
       where: { propertyPostId: id },
     });
-    const videos = await prisma.video.findMany({ where: { postId: id } });
+    const videos = await prisma.video.findMany({
+      where: { propertyPostId: id },
+    });
 
     const imagePublicIds = images.map((i) => i.public_id).filter(Boolean);
     const videoPublicIds = videos.map((v) => v.public_id).filter(Boolean);
@@ -455,15 +427,15 @@ export const removepost = async (req, res) => {
         : Promise.resolve(),
       videoPublicIds.length
         ? cloudinary.api.delete_resources(videoPublicIds, {
-          resource_type: "video",
-        })
+            resource_type: "video",
+          })
         : Promise.resolve(),
     ]);
 
     await prisma.$transaction([
       prisma.deposit.deleteMany({ where: { postId: id } }),
       prisma.image.deleteMany({ where: { propertyPostId: id } }),
-      prisma.video.deleteMany({ where: { postId: id } }),
+      prisma.video.deleteMany({ where: { propertyPostId: id } }),
       prisma.propertyPost.delete({ where: { id } }),
     ]);
 
@@ -489,12 +461,6 @@ export const updatePost = async (req, res) => {
     }
     const { sellerId } = req.session.user;
 
-    if (!req.body || typeof req.body !== "object") {
-      return res
-        .status(400)
-        .json({ message: "Invalid or missing request body" });
-    }
-
     const existingPost = await prisma.propertyPost.findUnique({
       where: { id },
     });
@@ -506,7 +472,6 @@ export const updatePost = async (req, res) => {
         .json({ message: "Forbidden: You are not the owner of this post" });
     }
 
-    // ❗ Propertytype ถูกตัดออก (ไม่มีใน schema)
     const allowedFields = [
       "Property_Name",
       "Price",
@@ -558,7 +523,7 @@ export const updatePost = async (req, res) => {
     ];
 
     const dataToUpdate = {};
-    for (const [k, v] of Object.entries(req.body)) {
+    for (const [k, v] of Object.entries(req.body || {})) {
       if (!allowedFields.includes(k)) continue;
       if (v === undefined) continue;
 
@@ -619,12 +584,15 @@ export const updatePost = async (req, res) => {
       );
       await prisma.image.deleteMany({ where: { propertyPostId: id } });
 
+      const uploaded = await Promise.all(
+        newImages.map((f) => uploadWithAssetId(f, "property_images"))
+      );
       imageResult = await prisma.image.createMany({
-        data: newImages.map((file) => ({
-          url: file.path || file.url,
-          public_id: file.public_id || file.filename,
+        data: uploaded.map((file) => ({
+          url: file.url,
+          public_id: file.public_id,
           asset_id: file.asset_id,
-          secure_url: file.secure_url || file.path || file.url,
+          secure_url: file.secure_url,
           propertyPostId: id,
         })),
       });
@@ -634,25 +602,30 @@ export const updatePost = async (req, res) => {
     const newVideos = filesOf(req.files, "videos");
     let videoResult = null;
     if (newVideos.length > 0) {
-      const oldVideos = await prisma.video.findMany({ where: { postId: id } });
+      const oldVideos = await prisma.video.findMany({
+        where: { propertyPostId: id },
+      });
       await Promise.all(
         oldVideos.map((v) =>
           v.public_id
             ? cloudinary.uploader.destroy(v.public_id, {
-              resource_type: "video",
-            })
+                resource_type: "video",
+              })
             : Promise.resolve()
         )
       );
-      await prisma.video.deleteMany({ where: { postId: id } });
+      await prisma.video.deleteMany({ where: { propertyPostId: id } });
 
+      const uploadedV = await Promise.all(
+        newVideos.map((f) => uploadWithAssetId(f, "property_videos"))
+      );
       videoResult = await prisma.video.createMany({
-        data: newVideos.map((file) => ({
-          url: file.path || file.url,
-          public_id: file.public_id || file.filename,
+        data: uploadedV.map((file) => ({
+          url: file.url,
+          public_id: file.public_id,
           asset_id: file.asset_id,
-          secure_url: file.secure_url || file.path || file.url,
-          postId: id,
+          secure_url: file.secure_url,
+          propertyPostId: id,
         })),
       });
     }
@@ -670,7 +643,7 @@ export const updatePost = async (req, res) => {
 };
 
 /* =============== CATEGORIES =============== */
-export const getallcategory = async (req, res) => {
+export const getallcategory = async (_req, res) => {
   try {
     const categories = await prisma.category.findMany();
     res.status(200).json(categories);
@@ -693,10 +666,10 @@ export const getHomePagePosts = async (req, res) => {
         select: {
           Preferred_Province: true,
           Preferred_District: true,
-          Preferred_Subdistrict: true, // ดึงข้อมูลส่วนนี้มาแล้ว
+          Preferred_Subdistrict: true,
           Nearby_Facilities: true,
-          Lifestyle_Preferences: true
-        }
+          Lifestyle_Preferences: true,
+        },
       });
     }
 
@@ -706,7 +679,7 @@ export const getHomePagePosts = async (req, res) => {
         id: true,
         Province: true,
         District: true,
-        Subdistrict: true, // ดึงข้อมูลส่วนนี้มาแล้ว
+        Subdistrict: true,
         Property_Name: true,
         Price: true,
         Image: { take: 1, select: { secure_url: true } },
@@ -717,50 +690,37 @@ export const getHomePagePosts = async (req, res) => {
       take: 100,
     });
 
-    if (!buyerPreferences) {
-      return res.json(allPosts);
-    }
+    if (!buyerPreferences) return res.json(allPosts);
 
     const calculateMatchScore = (post, prefs) => {
       let score = 0;
-
-      // 1. ตรวจสอบจังหวัด, อำเภอ, และตำบล
       if (post.Province === prefs.Preferred_Province) {
-        score += 10; // จังหวัดตรงกัน +10 คะแนน
+        score += 10;
         if (post.District === prefs.Preferred_District) {
-          score += 5; // อำเภอตรงกัน +5 คะแนน
-          // (เพิ่ม) ตรวจสอบตำบล/แขวง
-          if (post.Subdistrict === prefs.Preferred_Subdistrict) {
-            score += 3; // ตำบล/แขวงตรงกัน +3 คะแนน
-          }
+          score += 5;
+          if (post.Subdistrict === prefs.Preferred_Subdistrict) score += 3;
         }
       }
-
-      // 2. ตรวจสอบสิ่งอำนวยความสะดวกใกล้เคียง
       if (prefs.Nearby_Facilities && post.Nearby_Landmarks) {
-        const matchingFacilities = post.Nearby_Landmarks.filter(facility =>
-          prefs.Nearby_Facilities.includes(facility)
+        const matchingFacilities = post.Nearby_Landmarks.filter((f) =>
+          prefs.Nearby_Facilities.includes(f)
         );
         score += matchingFacilities.length * 2;
       }
-
-      // 3. ตรวจสอบไลฟ์สไตล์
       if (prefs.Lifestyle_Preferences && post.Additional_Amenities) {
-        const matchingAmenities = post.Additional_Amenities.filter(amenity =>
-          prefs.Lifestyle_Preferences.includes(amenity)
+        const matchingAmenities = post.Additional_Amenities.filter((a) =>
+          prefs.Lifestyle_Preferences.includes(a)
         );
         score += matchingAmenities.length;
       }
-
       return score;
     };
 
-    allPosts.sort((postA, postB) => {
-      const scoreA = calculateMatchScore(postA, buyerPreferences);
-      const scoreB = calculateMatchScore(postB, buyerPreferences);
-      return scoreB - scoreA;
-    });
-
+    allPosts.sort(
+      (a, b) =>
+        calculateMatchScore(b, buyerPreferences) -
+        calculateMatchScore(a, buyerPreferences)
+    );
     res.json(allPosts);
   } catch (err) {
     console.error("getHomePagePosts error:", err);

@@ -1,4 +1,4 @@
-// routes/auth.js (ESM, complete for server ESM)
+// routers/auth.js (ESM, complete for server ESM)
 import express from "express";
 const router = express.Router();
 

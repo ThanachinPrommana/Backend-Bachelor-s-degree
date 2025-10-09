@@ -1,9 +1,12 @@
-// routes/user.js (ESM, merged & fixed)
+// routers/user.merged.final.js
 import express from "express";
-import upload from "../Middlewares/upload.js"; // profile image uploader
-import { uploadDocument } from "../Middlewares/document.js"; // ✅ named import ตาม middleware ปัจจุบัน
+import upload from "../Middlewares/upload.js";
+import uploadDocument from "../Middlewares/document.js";
 import { isAuthenticated, isSeller } from "../Middlewares/authCheck.js";
 
+const router = express.Router();
+
+// Controllers
 import {
   // Admin / Management
   updateStatusSeller,
@@ -35,7 +38,7 @@ import {
   // Documents
   useruploadDocument,
 
-  // Booking & Slots (บางตัวอยู่ใน controllers/user ของคุณ)
+  // Booking & Slots
   createBooking,
   createDateTimeSlot,
   removeTimeSlot,
@@ -47,14 +50,12 @@ import {
 
 import {
   createStripePaymentIntent,
-  // ถ้าต้องใช้ webhook ให้ไปประกาศใน server ระดับแอป (raw body) ตามที่คุยกัน
+  // ⚠️ หากต้องใช้ Stripe Webhook ให้เปิดคอมเมนต์สองบรรทัดด้านล่าง และตั้ง route แยกด้วย express.raw()
   // handleStripeWebhook
 } from "../controllers/payment.js";
 
-const router = express.Router();
-
 /* -------------------------------------------------------------
- * Admin / Management
+ * Admin / Management (ควรมี adminOnly middleware ถ้ามี)
  * ----------------------------------------------------------- */
 
 // อัปเดตสถานะผู้ขาย (APPROVED/REJECTED/PENDING)
@@ -66,9 +67,8 @@ router.patch("/seller/status/:id", isAuthenticated, (req, res, next) => {
   return updateStatusSeller(req, res, next);
 });
 
-// ลบผู้ใช้
+// ลบผู้ใช้ (Admin)
 router.delete("/user/:id", isAuthenticated, deleteUser);
-
 // Back-compat (บางที่เคยเรียก /seller/:id เพื่อลบ user)
 router.delete("/seller/:id", isAuthenticated, deleteUser);
 
@@ -76,13 +76,12 @@ router.delete("/seller/:id", isAuthenticated, deleteUser);
  * Lists / Search
  * ----------------------------------------------------------- */
 
-// รายชื่อผู้ขาย/ผู้ซื้อทั้งหมด (หน้า Admin/Backoffice)
+// รายชื่อผู้ขาย/ผู้ซื้อทั้งหมด (สำหรับหน้า Admin/Backoffice)
 router.get("/userSeller", listUserSeller);
 router.get("/userBuyer", listUserBuyer);
 
 // ค้นหาโพสต์ของผู้ขาย (เฉพาะของตัวเอง)
 router.get("/search/post/seller", isAuthenticated, searchFiltersSeller);
-
 // Back-compat (เดิมเคยส่งเป็น POST)
 router.post("/search/filters/seller", isAuthenticated, searchFiltersSeller);
 
@@ -117,10 +116,9 @@ router.post("/image", isAuthenticated, upload.single("image"), updateimage);
  * Seller posts management (self)
  * ----------------------------------------------------------- */
 
-// ดึงโพสต์ของผู้ขาย (current user)
+// ดึงโพสต์ของผู้ขายคนปัจจุบัน
 router.get("/post/seller", isAuthenticated, getpostBySeller);
-
-// Back-compat (เดิมเคยใช้ /seller/posts/:id)
+// Back-compat (บางที่เคยใช้ /seller/posts/:id)
 router.get("/seller/posts/:id", isAuthenticated, getpostBySeller);
 
 // ลบโพสต์ของผู้ขาย (เจ้าของเท่านั้น)
@@ -129,7 +127,6 @@ router.delete(
   isAuthenticated,
   deletePostBySeller
 );
-
 // Back-compat (เดิมเคยส่ง :id)
 router.delete("/seller/post/:id", isAuthenticated, (req, res, next) => {
   req.params.postId = req.params.id;
@@ -157,7 +154,7 @@ router.patch(
  * Documents
  * ----------------------------------------------------------- */
 
-// อัปโหลดเอกสาร
+// อัปโหลดเอกสารยืนยันมัดจำ/ยูนิต
 router.post(
   "/document",
   isAuthenticated,
@@ -206,6 +203,13 @@ router.post(
 // สร้าง PaymentIntent
 router.post("/create/payment", isAuthenticated, createStripePaymentIntent);
 
-// ⚠️ ถ้าต้องใช้ Webhook ให้เอาไปประกาศใน server ระดับแอป “ก่อน” express.json()
+// ⚠️ ถ้าต้องใช้ Webhook ให้เปิดใช้งานตามแบบด้านล่าง
+// หมายเหตุ: ต้องประกาศ route นี้ก่อนใช้ express.json() ที่ระดับแอป
+// import bodyParser from "body-parser";
+// router.post(
+//   "/payments/webhook",
+//   bodyParser.raw({ type: "application/json" }),
+//   handleStripeWebhook
+// );
 
 export default router;
