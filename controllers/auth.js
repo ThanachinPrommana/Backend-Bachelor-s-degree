@@ -49,7 +49,7 @@ export const preRegister = async (req, res) => {
 
     const encodedToken = Buffer.from(token).toString("base64");
     const link = `${FRONTEND_URL}/verifyemail?token=${encodedToken}`;
-
+    console.log("token:",encodedToken)
     await verifyemail(Email, link);
     return res.json({ message: "Verification email sent" });
   } catch (err) {
@@ -344,6 +344,8 @@ export const getProfile = async (req, res) => {
             Review_Status: true,
             DocumentUrl: true,
             createdAt: true,
+            postId:true,
+            unitId:true,
             User: {
               select: {
                 First_name: true,

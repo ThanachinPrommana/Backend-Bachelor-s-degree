@@ -171,6 +171,7 @@ const authenticateAdmin = async (email, password) => {
     : null;
 };
 
+// --- Router สำหรับหน้าสาธารณะ (Public) ของ Admin ---
 const publicAdminRouter = express.Router();
 publicAdminRouter.get("/login", (req, res) => {
   if (req.session.adminUser) return res.redirect(admin.options.rootPath);
@@ -185,8 +186,11 @@ publicAdminRouter.post("/login", async (req, res) => {
   }
   res.redirect("/admin/login");
 });
+
 publicAdminRouter.get("/logout", (req, res) => {
-  req.session.destroy(() => res.redirect("/admin/login"));
+  req.session.destroy(() => {
+    res.redirect("/admin/login");
+  });
 });
 
 const requireLogin = (req, res, next) => {
