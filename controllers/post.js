@@ -405,7 +405,13 @@ export const getPost = async (req, res) => {
         user: {
           select: {
             First_name: true, Last_name: true,
-            image: true
+            image: true,
+            
+          }
+        },
+        seller:{
+          select:{
+            Status:true
           }
         },
         Phone: true,

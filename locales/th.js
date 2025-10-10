@@ -69,7 +69,7 @@ export default {
             community_subtitle: "คำบรรยายชุมชน",
             foundBug_title: "พบชื่อข้อผิดพลาด",
             foundBug_subtitle: "พบข้อบกพร่องคำบรรยาย",
-
+            noRecords:"ว่างเปล่า"
 
         },
         properties: {
