@@ -145,7 +145,7 @@ const admin = new AdminJS({
         logo: false,
         // theme: {
         //     colors: {
-                
+
         //     }
         // }
     },
@@ -170,6 +170,7 @@ app.use(cors({
     credentials: true,
 }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), handleStripeWebhook);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -265,7 +266,7 @@ app.use(admin.options.rootPath, requireLogin, protectedAdminRouter);
 // =================================================================
 // 6. Routes อื่นๆ ของแอปพลิเคชัน
 // =================================================================
-app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), handleStripeWebhook);
+
 const routersPath = path.join(__dirname, 'routers');
 (async () => {
     for (const filename of readdirSync(routersPath)) {
