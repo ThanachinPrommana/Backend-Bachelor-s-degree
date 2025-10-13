@@ -1,4 +1,4 @@
-// controllers/post.js (merged, safe with current schema)
+// controllers/post.js (merged & resolved)
 import prisma from "../config/prisma.js";
 import cloudinary from "../utils/cloudinary.js";
 import {
@@ -38,7 +38,7 @@ const ALLOWED_AMENITIES = [
   "Pet_Friendly",
 ];
 
-/* =============== CREATE =============== */
+/* =============== CREATE (Post + Deposit per units or per post) =============== */
 export const createpost = async (req, res) => {
   try {
     if (!req.session.user) {
@@ -99,7 +99,7 @@ export const createpost = async (req, res) => {
       propertyUnits,
     } = req.body;
 
-    /* ✅ ตรวจเฉพาะกรณีขายเท่านั้น */
+    /* ✅ บังคับเงินดาวน์เฉพาะกรณีขาย */
     if (
       String(Sell_Rent).toUpperCase() === "SALE" &&
       (!Deposit_Amount || Number(Deposit_Amount) <= 0)
@@ -138,85 +138,76 @@ export const createpost = async (req, res) => {
       parsedPropertyUnits = propertyUnits;
     }
 
-    const newPostWithDeposit = await prisma.$transaction(
-      async (tx) => {
-        const newPost = await tx.propertyPost.create({
-          data: {
-            Property_Name,
-            Province,
-            District,
-            Subdistrict,
-            Address,
-            Description,
-            Usable_Area: toFloatOrNull(Usable_Area),
-            Land_Size: toFloatOrNull(Land_Size),
-            Bedrooms: toIntOrNull(Bedrooms),
-            Bathroom: toIntOrNull(Bathroom),
-            Total_Rooms: toIntOrNull(Total_Rooms),
-            Year_Built,
-            Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
-            Additional_Amenities: toEnumArray(
-              Additional_Amenities,
-              ALLOWED_AMENITIES
-            ),
-            Deposit_Amount: toFloatOrNull(Deposit_Amount),
-            Contract_Seller,
-            LinkMap,
-            Price: toFloatOrNull(Price),
-            Parking_Space: toIntOrNull(Parking_Space),
-            Sell_Rent,
-            Link_line,
-            Link_facbook,
-            Name,
-            Phone,
-            Latitude: toFloatOrNull(Latitude),
-            Longitude: toFloatOrNull(Longitude),
-            Other_related_expenses,
-            Interest: toFloatOrNull(Interest),
-            floor: toIntOrNull(floor),
+    const newPostWithDeposit = await prisma.$transaction(async (tx) => {
+      const newPost = await tx.propertyPost.create({
+        data: {
+          Property_Name,
+          Province,
+          District,
+          Subdistrict,
+          Address,
+          Description,
+          Usable_Area: toFloatOrNull(Usable_Area),
+          Land_Size: toFloatOrNull(Land_Size),
+          Bedrooms: toIntOrNull(Bedrooms),
+          Bathroom: toIntOrNull(Bathroom),
+          Total_Rooms: toIntOrNull(Total_Rooms),
+          Year_Built, // string per schema
+          Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
+          Additional_Amenities: toEnumArray(
+            Additional_Amenities,
+            ALLOWED_AMENITIES
+          ),
+          Deposit_Amount: toFloatOrNull(Deposit_Amount),
+          Contract_Seller,
+          LinkMap,
+          Price: toFloatOrNull(Price),
+          Parking_Space: toIntOrNull(Parking_Space),
+          Sell_Rent,
+          Link_line,
+          Link_facbook,
+          Name,
+          Phone,
+          Latitude: toFloatOrNull(Latitude),
+          Longitude: toFloatOrNull(Longitude),
+          Other_related_expenses,
+          Interest: toFloatOrNull(Interest),
+          floor: toIntOrNull(floor),
 
-            NumberOfUnits:
-              parsedPropertyUnits?.length > 0 ? parsedPropertyUnits.length : 1,
+          NumberOfUnits:
+            parsedPropertyUnits?.length > 0 ? parsedPropertyUnits.length : 1,
 
-            ...(parsedPropertyUnits &&
-              parsedPropertyUnits.length > 0 && {
-                PropertyUnit: {
-                  create: parsedPropertyUnits.map((unit) => ({
-                    Unit_Number: unit.Unit_Number,
-                  })),
-                },
-              }),
-
-            ...(connectIf(categoryId)
-              ? { Category: connectIf(categoryId) }
-              : {}),
-
-            user: { connect: { id: userId } },
-            seller: { connect: { id: effectiveSellerId } },
-
-            Image: {
-              create: imageData,
-              // create: imageFiles.map((file) => ({
-              //   asset_id: file.asset_id,
-              //   public_id: file.public_id || file.filename,
-              //   url: file.path || file.url,
-              //   secure_url: file.secure_url || file.path || file.url,
-              // })),
+          ...(parsedPropertyUnits?.length > 0 && {
+            PropertyUnit: {
+              create: parsedPropertyUnits.map((unit) => ({
+                Unit_Number: unit.Unit_Number,
+              })),
             },
-            Video: {
-              create: videoData,
-              // create: videoFiles.map((file) => ({
-              //   asset_id: file.asset_id,
-              //   public_id: file.public_id || file.filename,
-              //   url: file.path || file.url,
-              //   secure_url: file.secure_url || file.path || file.url,
-              // })),
-            },
-          },
-          include: { Image: true, Video: true },
-        });
+          }),
 
-        // Initial Deposit (ยังไม่ผูกกับผู้ซื้อ)
+          ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
+
+          user: { connect: { id: userId } },
+          seller: { connect: { id: effectiveSellerId } },
+
+          Image: imageData.length ? { create: imageData } : undefined,
+          Video: videoData.length ? { create: videoData } : undefined,
+        },
+        include: { Image: true, Video: true, PropertyUnit: true },
+      });
+
+      // ===== Logic Deposit =====
+      if (parsedPropertyUnits?.length > 0) {
+        // สร้าง Deposit ต่อยูนิต
+        const depositData = newPost.PropertyUnit.map((unit) => ({
+          propertyUnitId: unit.id,
+          postId: newPost.id,
+          Deposit_Amount: toFloatOrNull(Deposit_Amount),
+          Deposit_Status: "PENDING",
+        }));
+        await tx.deposit.createMany({ data: depositData });
+      } else {
+        // ไม่มียูนิต → สร้าง Deposit ผูกกับโพสต์ (ของเดิม)
         await tx.deposit.create({
           data: {
             postId: newPost.id,
@@ -224,11 +215,10 @@ export const createpost = async (req, res) => {
             Deposit_Status: "PENDING",
           },
         });
+      }
 
-        return newPost;
-      },
-      { timeout: 10000 }
-    );
+      return newPost;
+    });
 
     return res.status(201).json(newPostWithDeposit);
   } catch (err) {
@@ -407,6 +397,11 @@ export const getPost = async (req, res) => {
             First_name: true,
             Last_name: true,
             image: true,
+          },
+        },
+        seller: {
+          select: {
+            Status: true,
           },
         },
         Phone: true,
