@@ -12,6 +12,7 @@ export const getAvailableSlotsForPost = async (req, res) => {
       where: { id: postId },
       select: { id: true },
     });
+    
     if (!post) {
       return res.status(404).json({ message: "Post not found" });
     }

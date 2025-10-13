@@ -1,4 +1,5 @@
 // controllers/post.js (merged, safe with current schema)
+import { create } from "domain";
 import prisma from "../config/prisma.js";
 import cloudinary from "../utils/cloudinary.js";
 import {
@@ -179,6 +180,12 @@ export const createpost = async (req, res) => {
               PropertyUnit: {
                 create: parsedPropertyUnits.map((unit) => ({
                   Unit_Number: unit.Unit_Number,
+                  // Deposit: {
+                  //   create: {
+                  //     Deposit_Amount: toFloatOrNull(Deposit_Amount), // ใช้ค่ามัดจำจาก req.body
+                  //     Deposit_Status: "PENDING",
+                  //   }
+                  // }
                 })),
               },
             }),
@@ -209,21 +216,38 @@ export const createpost = async (req, res) => {
               // })),
             },
           },
-          include: { Image: true, Video: true },
+          include: { Image: true, Video: true, PropertyUnit: true, },
+
         });
 
         // Initial Deposit (ยังไม่ผูกกับผู้ซื้อ)
-        await tx.deposit.create({
-          data: {
-            postId: newPost.id,
+        // await tx.deposit.create({
+        //   data: {
+        //     postId: newPost.id,
+        //     Deposit_Amount: toFloatOrNull(Deposit_Amount),
+        //     Deposit_Status: "PENDING",
+        //   },
+        // });
+        // ขั้นตอนที่ 2: สร้าง Deposit สำหรับแต่ละ Unit ที่เพิ่งสร้างไป
+        // เราจะใช้ newPost.PropertyUnit ที่ได้มาจาก include ในขั้นตอนที่ 1
+        if (newPost.PropertyUnit && newPost.PropertyUnit.length > 0) {
+          // สร้าง list ของ data ที่จะใช้สร้าง Deposit
+          const depositData = newPost.PropertyUnit.map(unit => ({
+            propertyUnitId: unit.id,          //  <-- ID ของยูนิต
+            postId: newPost.id,               //  <-- ID ของโพสต์แม่
             Deposit_Amount: toFloatOrNull(Deposit_Amount),
             Deposit_Status: "PENDING",
-          },
-        });
+          }));
+
+          // สร้าง Deposit ทั้งหมดในครั้งเดียวเพื่อประสิทธิภาพที่ดีกว่า
+          await tx.deposit.createMany({
+            data: depositData,
+          });
+        }
 
         return newPost;
       },
-      { timeout: 10000 }
+      { timeout: 20000  }
     );
 
     return res.status(201).json(newPostWithDeposit);
@@ -406,12 +430,12 @@ export const getPost = async (req, res) => {
           select: {
             First_name: true, Last_name: true,
             image: true,
-            
+
           }
         },
-        seller:{
-          select:{
-            Status:true
+        seller: {
+          select: {
+            Status: true
           }
         },
         Phone: true,

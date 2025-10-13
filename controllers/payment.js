@@ -41,7 +41,7 @@ export const createStripePaymentIntent = async (req, res) => {
 
     // 4. ดึงข้อมูลมัดจำ (Deposit)
     const deposit = await prisma.deposit.findFirst({
-      where: { postId },
+      where: { propertyUnitId: unitId },
     });
 
     if (!deposit) {
@@ -174,6 +174,18 @@ export const handleStripeWebhook = async (req, res) => {
             Payment_Amount: paymentIntent.amount / 100, // กลับมาเป็นบาท
             Payment_Slip: paymentIntent.id, // เก็บ PaymentIntent ID เป็นหลักฐาน
             Status: "CONFIRMED",
+          },
+        });
+        
+        await tx.documentUpload.updateMany({
+          where: {
+            userId: buyerId,
+            postId: postId,
+            unitId: unitId,
+            Review_Status: "APPROVED",
+          },
+          data: {
+            Review_Status: "HIDDEN", // <-- เปลี่ยนจาก PAID เป็น HIDDEN
           },
         });
 
