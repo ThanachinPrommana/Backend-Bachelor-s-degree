@@ -1,4 +1,4 @@
-// server.js  (ESM, based on your friend's version, with safe fixes)
+// server.js — merged & conflict-resolved (ESM)
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
@@ -11,7 +11,6 @@ import { fileURLToPath } from "url";
 import AdminJS from "adminjs";
 import { Database, Resource, getModelByName } from "@adminjs/prisma";
 import AdminJSExpress from "@adminjs/express";
-// import { bundle } from '@adminjs/bundler'; // (optional) not used
 import prisma from "./config/prisma.js";
 import { startNotificationSchedulers } from "./Scheduler/notificationScheduler.js";
 import { handleStripeWebhook } from "./controllers/payment.js";
@@ -115,6 +114,7 @@ const ALLOWLIST = (
 app.use(
   cors({
     origin(origin, cb) {
+      // อนุญาตจาก allowlist หรือกรณี non-browser (เช่น curl/postman) ที่ไม่มี Origin
       if (!origin || ALLOWLIST.includes(origin)) return cb(null, true);
       cb(new Error(`CORS blocked: ${origin}`));
     },
@@ -143,8 +143,10 @@ app.use(express.urlencoded({ extended: true }));
  * 5) Session
  * ================================================================= */
 if (IS_PRODUCTION) {
+  // ต้องตั้งค่านี้เมื่ออยู่หลัง proxy (Render/Heroku/Nginx/Cloudflare) เพื่อให้ secure cookie ทำงาน
   app.set("trust proxy", 1);
 }
+
 const baseCookie = { maxAge: 2 * 60 * 60 * 1000, httpOnly: true };
 const cookie = IS_PRODUCTION
   ? { ...baseCookie, secure: true, sameSite: "none" }
@@ -154,7 +156,7 @@ app.use(
   session({
     secret: process.env.SESSION_SECRET || "some-strong-secret",
     resave: false,
-    saveUninitialized: false, // ✅ เปลี่ยนเป็น false
+    saveUninitialized: false, // 🔒 ไม่สร้าง session ว่างโดยไม่จำเป็น
     cookie,
   })
 );
@@ -186,49 +188,60 @@ publicAdminRouter.post("/login", async (req, res) => {
   }
   res.redirect("/admin/login");
 });
-
 publicAdminRouter.get("/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.redirect("/admin/login");
-  });
+  req.session.destroy(() => res.redirect("/admin/login"));
 });
 
 const requireLogin = (req, res, next) => {
   if (req.session && req.session.adminUser) return next();
   res.redirect("/admin/login");
 };
-const protectedAdminRouter = AdminJSExpress.buildRouter(admin);
 
+// ⚙️ AdminJS dashboard (ต้อง login)
+const protectedAdminRouter = AdminJSExpress.buildRouter(admin);
 app.use(admin.options.rootPath, publicAdminRouter);
 app.use(admin.options.rootPath, requireLogin, protectedAdminRouter);
 
 /* =================================================================
  * 7) App Routers (รองรับทั้ง ESM default และ CJS module.exports)
  * ================================================================= */
-const routersPath = path.join(__dirname, "routers");
-(async () => {
-  for (const filename of readdirSync(routersPath)) {
-    if (filename.endsWith(".js")) {
-      const mod = await import(`./routers/${filename}`);
-      const router = mod.default || mod; // ✅ เผื่อกรณีเป็น CJS
+const mountRoutersFrom = async (dir) => {
+  try {
+    const full = path.join(__dirname, dir);
+    for (const filename of readdirSync(full)) {
+      if (!filename.endsWith(".js")) continue;
+      // รองรับทั้ง default export (ESM) และ module.exports (CJS)
+      const mod = await import(`./${dir}/${filename}`);
+      const router = mod.default || mod;
       if (typeof router === "function") {
         app.use("/api", router);
-        console.log(`➡️ Mounted: /api from routers/${filename}`);
+        console.log(`➡️ Mounted: /api from ${dir}/${filename}`);
+      } else if (router && typeof router === "object" && "handle" in router) {
+        // กรณีส่งออกเป็น express.Router instance
+        app.use("/api", router);
+        console.log(`➡️ Mounted (instance): /api from ${dir}/${filename}`);
       } else {
-        console.warn(`⚠️ Skip routers/${filename}: no router function export`);
+        console.warn(`⚠️ Skip ${dir}/${filename}: no router export`);
       }
     }
+  } catch (e) {
+    // ถ้าโฟลเดอร์ไม่มี ให้ข้ามไปเฉย ๆ
+    console.warn(`(info) Skip mounting from ./${dir}:`, e.message);
   }
-})();
+};
+
+// รองรับทั้งสอง convention
+await mountRoutersFrom("routers");
+await mountRoutersFrom("routes");
 
 /* =================================================================
- * 8) Health & (optional) error handler
+ * 8) Health & error handler
  * ================================================================= */
 app.get("/healthz", (_req, res) =>
   res.json({ ok: true, time: new Date().toISOString() })
 );
 
-// (ทางเลือก) Error handler ช่วย debug
+// Error handler ช่วย debug
 app.use((err, _req, res, _next) => {
   console.error("❌ Error:", err?.message);
   res

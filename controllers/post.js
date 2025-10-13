@@ -1,4 +1,4 @@
-// controllers/post.js
+// controllers/post.js (merged, safe with current schema)
 import prisma from "../config/prisma.js";
 import cloudinary from "../utils/cloudinary.js";
 import {
@@ -138,75 +138,97 @@ export const createpost = async (req, res) => {
       parsedPropertyUnits = propertyUnits;
     }
 
-    const newPostWithDeposit = await prisma.$transaction(async (tx) => {
-      const newPost = await tx.propertyPost.create({
-        data: {
-          Property_Name,
-          Province,
-          District,
-          Subdistrict,
-          Address,
-          Description,
-          Usable_Area: toFloatOrNull(Usable_Area),
-          Land_Size: toFloatOrNull(Land_Size),
-          Bedrooms: toIntOrNull(Bedrooms),
-          Bathroom: toIntOrNull(Bathroom),
-          Total_Rooms: toIntOrNull(Total_Rooms),
-          Year_Built,
-          Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
-          Additional_Amenities: toEnumArray(
-            Additional_Amenities,
-            ALLOWED_AMENITIES
-          ),
-          Deposit_Amount: toFloatOrNull(Deposit_Amount),
-          Contract_Seller,
-          LinkMap,
-          Price: toFloatOrNull(Price),
-          Parking_Space: toIntOrNull(Parking_Space),
-          Sell_Rent,
-          Link_line,
-          Link_facbook,
-          Name,
-          Phone,
-          Latitude: toFloatOrNull(Latitude),
-          Longitude: toFloatOrNull(Longitude),
-          Other_related_expenses,
-          Interest: toFloatOrNull(Interest),
-          floor: toIntOrNull(floor),
+    const newPostWithDeposit = await prisma.$transaction(
+      async (tx) => {
+        const newPost = await tx.propertyPost.create({
+          data: {
+            Property_Name,
+            Province,
+            District,
+            Subdistrict,
+            Address,
+            Description,
+            Usable_Area: toFloatOrNull(Usable_Area),
+            Land_Size: toFloatOrNull(Land_Size),
+            Bedrooms: toIntOrNull(Bedrooms),
+            Bathroom: toIntOrNull(Bathroom),
+            Total_Rooms: toIntOrNull(Total_Rooms),
+            Year_Built,
+            Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
+            Additional_Amenities: toEnumArray(
+              Additional_Amenities,
+              ALLOWED_AMENITIES
+            ),
+            Deposit_Amount: toFloatOrNull(Deposit_Amount),
+            Contract_Seller,
+            LinkMap,
+            Price: toFloatOrNull(Price),
+            Parking_Space: toIntOrNull(Parking_Space),
+            Sell_Rent,
+            Link_line,
+            Link_facbook,
+            Name,
+            Phone,
+            Latitude: toFloatOrNull(Latitude),
+            Longitude: toFloatOrNull(Longitude),
+            Other_related_expenses,
+            Interest: toFloatOrNull(Interest),
+            floor: toIntOrNull(floor),
 
-          NumberOfUnits:
-            parsedPropertyUnits?.length > 0 ? parsedPropertyUnits.length : 1,
+            NumberOfUnits:
+              parsedPropertyUnits?.length > 0 ? parsedPropertyUnits.length : 1,
 
-          ...(parsedPropertyUnits?.length > 0 && {
-            PropertyUnit: {
-              create: parsedPropertyUnits.map((unit) => ({
-                Unit_Number: unit.Unit_Number,
-              })),
+            ...(parsedPropertyUnits &&
+              parsedPropertyUnits.length > 0 && {
+                PropertyUnit: {
+                  create: parsedPropertyUnits.map((unit) => ({
+                    Unit_Number: unit.Unit_Number,
+                  })),
+                },
+              }),
+
+            ...(connectIf(categoryId)
+              ? { Category: connectIf(categoryId) }
+              : {}),
+
+            user: { connect: { id: userId } },
+            seller: { connect: { id: effectiveSellerId } },
+
+            Image: {
+              create: imageData,
+              // create: imageFiles.map((file) => ({
+              //   asset_id: file.asset_id,
+              //   public_id: file.public_id || file.filename,
+              //   url: file.path || file.url,
+              //   secure_url: file.secure_url || file.path || file.url,
+              // })),
             },
-          }),
+            Video: {
+              create: videoData,
+              // create: videoFiles.map((file) => ({
+              //   asset_id: file.asset_id,
+              //   public_id: file.public_id || file.filename,
+              //   url: file.path || file.url,
+              //   secure_url: file.secure_url || file.path || file.url,
+              // })),
+            },
+          },
+          include: { Image: true, Video: true },
+        });
 
-          ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
+        // Initial Deposit (ยังไม่ผูกกับผู้ซื้อ)
+        await tx.deposit.create({
+          data: {
+            postId: newPost.id,
+            Deposit_Amount: toFloatOrNull(Deposit_Amount),
+            Deposit_Status: "PENDING",
+          },
+        });
 
-          user: { connect: { id: userId } },
-          seller: { connect: { id: effectiveSellerId } },
-
-          Image: imageData.length ? { create: imageData } : undefined,
-          Video: videoData.length ? { create: videoData } : undefined,
-        },
-        include: { Image: true, Video: true },
-      });
-
-      // สร้าง deposit เริ่มต้น (ยังไม่ผูก buyer)
-      await tx.deposit.create({
-        data: {
-          postId: newPost.id,
-          Deposit_Amount: toFloatOrNull(Deposit_Amount),
-          Deposit_Status: "PENDING",
-        },
-      });
-
-      return newPost;
-    });
+        return newPost;
+      },
+      { timeout: 10000 }
+    );
 
     return res.status(201).json(newPostWithDeposit);
   } catch (err) {
@@ -380,10 +402,13 @@ export const getPost = async (req, res) => {
         Additional_Amenities: true,
         Parking_Space: true,
         Sell_Rent: true,
-        Name: true,
-        Link_line: true,
-        Link_facbook: true,
-        Interest: true,
+        user: {
+          select: {
+            First_name: true,
+            Last_name: true,
+            image: true,
+          },
+        },
         Phone: true,
         Latitude: true,
         Longitude: true,

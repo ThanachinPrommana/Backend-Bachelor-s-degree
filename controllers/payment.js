@@ -10,84 +10,62 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
  * body: { postId: string, unitId: string }
  */
 export const createStripePaymentIntent = async (req, res) => {
+  console.log("--- [START] createStripePaymentIntent ---");
   try {
-    const user = req.session?.user; // หรือ req.user ถ้าใช้ auth middleware แบบ bearer
-    const buyerId = user?.userId;
+    // 1. ดึงข้อมูลที่จำเป็นทั้งหมดออกมาที่จุดเดียว
+    const { postId, unitId } = req.body || {};
+    const buyerId = req.session?.user?.userId;
 
+    // 2. ตรวจสอบข้อมูลทันที
     if (!buyerId) {
+      console.error("[ERROR] Unauthorized: User not found in session.");
       return res.status(401).json({ message: "Unauthorized: กรุณาเข้าสู่ระบบ" });
     }
-
-    const { postId, unitId } = req.body || {};
     if (!postId || !unitId) {
-      return res
-        .status(400)
-        .json({ message: "Bad Request: postId และ unitId จำเป็นต้องมี" });
+      console.error("[ERROR] Bad Request: Missing postId or unitId in the request body.");
+      return res.status(400).json({ message: "Bad Request: postId และ unitId จำเป็นต้องมี" });
     }
+    console.log(`[INFO] Processing for buyerId: ${buyerId}, postId: ${postId}`);
 
-    // 1) ตรวจสอบเอกสารที่อนุมัติแล้วของ buyer สำหรับโพสต์และยูนิตนี้
+    // 3. ตรวจสอบเอกสาร (Document)
     const document = await prisma.documentUpload.findFirst({
-      where: {
-        userId: buyerId,
-        postId,
-        unitId,
-        Review_Status: "APPROVED",
-      },
-      select: { id: true },
+      where: { userId: buyerId, postId, unitId, Review_Status: "APPROVED" },
     });
 
     if (!document) {
+      console.error(`[ERROR] Forbidden: No approved document for buyerId: ${buyerId} and postId: ${postId}`);
       return res.status(403).json({
-        message:
-          "Forbidden: เอกสารสำหรับประกาศ/ยูนิตนี้ยังไม่ได้รับการอนุมัติ หรือไม่พบเอกสาร",
+        message: "Forbidden: เอกสารสำหรับประกาศ/ยูนิตนี้ยังไม่ได้รับการอนุมัติ หรือไม่พบเอกสาร",
       });
     }
 
-    // 2) ดึงข้อมูลมัดจำ
+    // 4. ดึงข้อมูลมัดจำ (Deposit)
     const deposit = await prisma.deposit.findFirst({
-      where: { postId },
-      include: { Post: { select: { userId: true } } },
+      where: { propertyUnitId: unitId },
     });
 
     if (!deposit) {
-      return res
-        .status(404)
-        .json({ message: "Not Found: ไม่พบข้อมูลมัดจำสำหรับประกาศนี้" });
+      console.error(`[ERROR] Not Found: Deposit information not found for postId: ${postId}`);
+      return res.status(404).json({ message: "Not Found: ไม่พบข้อมูลมัดจำสำหรับประกาศนี้" });
     }
-
-    // ต้องอยู่สถานะรอจ่าย
     if (deposit.Deposit_Status !== "PENDING") {
-      return res
-        .status(409)
-        .json({ message: "Deposit ไม่อยู่ในสถานะ PENDING" });
+      console.error(`[ERROR] Conflict: Deposit status for postId ${postId} is '${deposit.Deposit_Status}', not 'PENDING'.`);
+      return res.status(409).json({ message: "Deposit ไม่อยู่ในสถานะ PENDING" });
     }
 
-    // 3) ตรวจสอบสถานะของยูนิต
-    const unit = await prisma.propertyUnit.findUnique({
-      where: { id: unitId },
-      select: { id: true, Status: true },
-    });
+    // (ส่วนยูนิตยังไม่จำเป็นต้องเช็คซ้ำ เพราะเช็คตั้งแต่ตอนอนุมัติเอกสารแล้ว)
 
-    // ยูนิตควรเป็น PENDING ตั้งแต่ตอนยื่นเอกสาร (กันชนกัน)
-    if (!unit || unit.Status !== "PENDING") {
-      return res.status(409).json({
-        message: `Conflict: ยูนิตนี้ไม่ว่างสำหรับการมัดจำ (สถานะปัจจุบัน: ${unit?.Status ?? "UNKNOWN"})`,
-      });
+    // 5. สร้าง Stripe Payment Intent
+    const amountInSatang = Math.round(Number(deposit.Deposit_Amount) * 100);
+    if (!amountInSatang || amountInSatang <= 0) {
+      console.error(`[ERROR] Invalid Amount: Calculated amount is ${amountInSatang} for postId: ${postId}`);
+      return res.status(422).json({ message: "Invalid deposit amount." });
     }
 
-    // 4) คำนวณจำนวนเงิน (สตางค์)
-    const amountInSatang = Math.max(
-      0,
-      Math.round(Number(deposit.Deposit_Amount) * 100)
-    );
-    if (!amountInSatang) {
-      return res
-        .status(422)
-        .json({ message: "Invalid deposit amount on this post" });
-    }
-
-    // 5) สร้าง PaymentIntent (เพิ่ม idempotency key กันคลิ้กซ้ำ)
-    const idempotencyKey = `dep_${deposit.id}_unit_${unitId}_buyer_${buyerId}`;
+    // const idempotencyKey = `dep_${deposit.id}_unit_${unitId}_buyer_${buyerId}`;
+    // เพิ่ม Date.now() เพื่อสร้าง key ใหม่ทุกครั้งที่ทดสอบ
+    const idempotencyKey = `dep_${deposit.id}_unit_${unitId}_buyer_${buyerId}_${Date.now()}`;
+    console.log(`[INFO] Creating Stripe Payment Intent with amount: ${amountInSatang} satang`);
 
     const paymentIntent = await stripe.paymentIntents.create(
       {
@@ -96,23 +74,23 @@ export const createStripePaymentIntent = async (req, res) => {
         automatic_payment_methods: { enabled: true },
         metadata: {
           depositId: deposit.id,
-          postId: deposit.postId,
-          buyerId,
-          unitId,
+          postId: postId, // ใช้ postId จาก req.body ที่ตรวจสอบแล้ว
+          buyerId: buyerId,
+          unitId: unitId,
         },
       },
       { idempotencyKey }
     );
 
+    console.log("[SUCCESS] Stripe Payment Intent created successfully.");
     return res.status(200).json({
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
     });
+
   } catch (error) {
-    console.error("Error creating Stripe Payment Intent:", error);
-    return res
-      .status(500)
-      .json({ message: "Server Error", error: error.message });
+    console.error("[CRITICAL ERROR] An unexpected error occurred:", error);
+    return res.status(500).json({ message: "Server Error", error: error.message });
   }
 };
 
@@ -142,6 +120,14 @@ export const handleStripeWebhook = async (req, res) => {
       // อ่าน metadata
       const { depositId, postId, buyerId, unitId } = paymentIntent.metadata || {};
 
+      // เพิ่มบรรทัดนี้เข้าไปเพื่อ Debug
+      console.log("🔴 DEBUG: Metadata received in webhook:", {
+        depositId,
+        postId,
+        buyerId,
+        unitId,
+        paymentIntentId: paymentIntent.id,
+      });
       // ตรวจสอบ metadata
       if (!depositId || !postId || !buyerId || !unitId) {
         console.error(
@@ -188,6 +174,18 @@ export const handleStripeWebhook = async (req, res) => {
             Payment_Amount: paymentIntent.amount / 100, // กลับมาเป็นบาท
             Payment_Slip: paymentIntent.id, // เก็บ PaymentIntent ID เป็นหลักฐาน
             Status: "CONFIRMED",
+          },
+        });
+        
+        await tx.documentUpload.updateMany({
+          where: {
+            userId: buyerId,
+            postId: postId,
+            unitId: unitId,
+            Review_Status: "APPROVED",
+          },
+          data: {
+            Review_Status: "HIDDEN", // <-- เปลี่ยนจาก PAID เป็น HIDDEN
           },
         });
 
