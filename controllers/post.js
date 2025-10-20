@@ -247,7 +247,7 @@ export const createpost = async (req, res) => {
 
         return newPost;
       },
-      { timeout: 20000  }
+      { timeout: 20000 }
     );
 
     return res.status(201).json(newPostWithDeposit);
@@ -797,3 +797,19 @@ export const getHomePagePosts = async (req, res) => {
     res.status(500).json({ message: "Server Error" });
   }
 };
+
+export const getallNamepropertyPost = async (req, res) => {
+  try {
+    const posts = await prisma.propertyPost.findMany({
+      select: {
+        id: true,
+        Property_Name: true
+      }
+
+    })
+    res.status(200).json(posts);
+  } catch (err) {
+    console.error("Error fetching property post names:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+}

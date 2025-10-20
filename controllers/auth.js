@@ -49,7 +49,7 @@ export const preRegister = async (req, res) => {
 
     const encodedToken = Buffer.from(token).toString("base64");
     const link = `${FRONTEND_URL}/verifyemail?token=${encodedToken}`;
-    console.log("token:",encodedToken)
+    console.log("token:", encodedToken)
     await verifyemail(Email, link);
     return res.json({ message: "Verification email sent" });
   } catch (err) {
@@ -165,10 +165,10 @@ export const login = async (req, res) => {
       where: { Email },
       include: { Seller: true, Buyer: true },
     });
-    if (!user) return res.status(400).json({ message: "Email not found" });
+    if (!user) return res.status(400).json({ message: "ยังไม่มีบัญชีนี้" });
 
     const is_Match = await bcrypt.compare(Password, user.Password);
-    if (!is_Match) return res.status(400).json({ message: "Password invalid" });
+    if (!is_Match) return res.status(400).json({ message: "รหัสผ่านไม่ถูกต้อง" });
 
     const payload = {
       userId: user.id,
@@ -211,10 +211,10 @@ export const login = async (req, res) => {
 export const forgotPassword = async (req, res) => {
   try {
     const { Email } = req.body;
-    if (!Email) return res.status(400).json({ message: "Email is required" });
+    if (!Email) return res.status(400).json({ message: "ไม่เจออีเมลดังกล่าวในระบบ" });
 
     const user = await prisma.user.findFirst({ where: { Email } });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "ไม่พบผู้ใช้" });
 
     const token = jwt.sign(
       { userId: user.id, email: user.Email },
@@ -289,7 +289,44 @@ export const getProfile = async (req, res) => {
             nationalIdImage: true,
             // จากไฟล์ที่จะ merge:
             DateTimeSlot: true,
-            Booking: true,
+            Booking: {
+              select: {
+                id: true,
+                bookingStatus: true,
+                propertyUnit: {
+                  select: {
+                    propertyPost: {
+                      select: {
+                        id: true,
+                        Property_Name: true,
+                      }
+                    }
+                  }
+                },
+                dateTimeSlot: {
+                  select: {
+                    startTime: true,
+                    endTime: true
+                  }
+                },
+                Seller: {
+                  select: {
+                    user: {
+                      select: {
+                        First_name: true,
+                        Last_name: true,
+                        Payment: {
+                          select: {
+                            Payment_Slip: true,
+                          }
+                        }
+
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
         },
         Buyer: {
@@ -307,7 +344,54 @@ export const getProfile = async (req, res) => {
             Lifestyle_Preferences: true,
             Special_Requirements: true,
             // จากไฟล์ที่จะ merge:
-            Booking: true,
+            Booking: {
+              select: {
+                id: true,
+                bookingStatus: true,
+                propertyUnit: {
+                  select: {
+                    propertyPost: {
+                      select: {
+                        id: true,
+                        Property_Name: true,
+                      }
+                    }
+                  }
+                },
+                dateTimeSlot: {
+                  select: {
+                    startTime: true,
+                    endTime: true
+                  }
+                },
+                Seller: {
+                  select: {
+                    user: {
+                      select: {
+                        First_name: true,
+                        Last_name: true,
+                      }
+                    }
+                  }
+                },
+                Buyer: {
+                  select: {
+                    user: {
+                      select: {
+                        First_name: true,
+                        Last_name: true,
+                        Payment: {
+                          select: {
+                            Payment_Slip: true,
+                          }
+                        }
+
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
         },
         // จากไฟล์ที่จะ merge:
@@ -334,6 +418,48 @@ export const getProfile = async (req, res) => {
             Image: true,
             Deposit: true,
             sellerId: true,
+            DocumentUpload: {
+              orderBy: { createdAt: "desc" },
+              select: {
+                id: true,
+                DocumentName: true,
+                Review_Status: true,
+                DocumentUrl: true,
+                createdAt: true,
+                postId: true,
+                unitId: true,
+                User: {
+                  select: {
+                    id: true,
+                    First_name: true,
+                    Last_name: true,
+                  },
+                },
+
+                // (เพิ่ม) ใส่ Post และ unit เข้าไปใน select ของ DocumentUpload ตัวนี้ครับ
+                Post: {
+                  select: {
+                    Property_Name: true
+                  }
+                },
+                unit: {
+                  select: {
+                    Unit_Number: true,
+                    Deposit: {
+                      select: {
+                        Deposit_Status: true
+                      }
+                    },
+                    Booking: {
+                      select: {
+                        id: true,
+                        bookingStatus: true
+                      }
+                    }
+                  }
+                },
+              },
+            },
           },
         },
         DocumentUpload: {
@@ -344,14 +470,31 @@ export const getProfile = async (req, res) => {
             Review_Status: true,
             DocumentUrl: true,
             createdAt: true,
-            postId:true,
-            unitId:true,
+            postId: true,
+            unitId: true,
             User: {
               select: {
+                id: true,
                 First_name: true,
                 Last_name: true,
               },
             },
+            Post: {
+              select: {
+                Property_Name: true
+              }
+            },
+            unit: {
+              select: {
+                Unit_Number: true,
+                Deposit: {
+                  select: {
+                    Deposit_Status: true
+                  }
+                },
+
+              }
+            }
           },
         },
       },

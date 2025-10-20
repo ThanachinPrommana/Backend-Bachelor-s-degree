@@ -158,7 +158,7 @@ router.patch(
 router.post(
   "/document",
   isAuthenticated,
-  uploadDocument.single("document"),
+  uploadDocument.array("documents", 3), 
   useruploadDocument
 );
 

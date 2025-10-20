@@ -219,8 +219,8 @@ export const updateSeller = async (req, res) => {
       req.body[field] !== undefined
         ? req.body[field]
         : group && group[field] !== undefined
-        ? group[field]
-        : undefined;
+          ? group[field]
+          : undefined;
 
     const updated = await prisma.$transaction(async (tx) => {
       const current = await tx.user.findUnique({
@@ -295,10 +295,10 @@ export const updateSeller = async (req, res) => {
         userData.Seller = hasSeller
           ? { update: sellerPatch }
           : (() => {
-              throw new Error(
-                "โปรไฟล์ผู้ขายยังไม่ถูกสร้าง กรุณากรอกเลขบัตรประชาชน 13 หลักเพื่อสร้างครั้งแรก"
-              );
-            })();
+            throw new Error(
+              "โปรไฟล์ผู้ขายยังไม่ถูกสร้าง กรุณากรอกเลขบัตรประชาชน 13 หลักเพื่อสร้างครั้งแรก"
+            );
+          })();
       }
       if (Object.keys(buyerPatch).length) {
         userData.Buyer = hasBuyer
@@ -391,8 +391,8 @@ export const updateUser = async (req, res) => {
       req.body[field] !== undefined
         ? req.body[field]
         : bodyBuyer[field] !== undefined
-        ? bodyBuyer[field]
-        : undefined;
+          ? bodyBuyer[field]
+          : undefined;
 
     const BUYER_FIELDS = [
       "DateofBirth",
@@ -521,15 +521,18 @@ export const useruploadDocument = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized: Please log in." });
     const userId = loggedInUser.userId;
 
-    const { DocumentName, postId, unitId } = req.body;
-    const file = req.file;
-    if (!file) return res.status(400).json({ message: "No file upload" });
-    if (!unitId)
-      return res
-        .status(400)
-        .json({ message: "A specific unit ID is required for this action." });
+    const { postId, unitId } = req.body;
 
-    const result = await prisma.$transaction(async (tx) => {
+    // (แก้ไข) เปลี่ยนจาก req.file เป็น req.files (ซึ่งเป็น Array)
+    const files = req.files;
+    if (!files || files.length === 0)
+      return res.status(400).json({ message: "No files uploaded" });
+
+    if (!unitId)
+      return res.status(400).json({ message: "A specific unit ID is required." });
+
+    const resultDocuments = await prisma.$transaction(async (tx) => {
+      // --- ทำส่วนที่เกี่ยวกับ Unit แค่ครั้งเดียว ---
       const unit = await tx.propertyUnit.findUnique({ where: { id: unitId } });
       if (!unit || unit.Status !== "AVAILABLE")
         throw new Error("This unit is no longer available.");
@@ -538,59 +541,72 @@ export const useruploadDocument = async (req, res) => {
         where: { id: unitId },
         data: { Status: "PENDING" },
       });
+      // ------------------------------------------
 
-      const documentUrl = file.secure_url || file.path || file.url;
-      const publicId = file.filename || file.public_id;
+      // (สำคัญ) สร้าง Array ของ Promises สำหรับการสร้าง Document แต่ละไฟล์
+      const createDocumentPromises = files.map(file => {
+        const documentUrl = file.secure_url || file.path || file.url;
+        const publicId = file.filename || file.public_id;
 
-      const document = await tx.documentUpload.create({
-        data: {
-          userId,
-          DocumentName: DocumentName || file.originalname || "document",
-          DocumentUrl: documentUrl,
-          CloudinaryPublicId: publicId,
-          Review_Status: "PENDING",
-          postId,
-          unitId,
-        },
+        return tx.documentUpload.create({
+          data: {
+            userId,
+            DocumentName: file.originalname || "document", // ใช้ชื่อไฟล์แต่ละอัน
+            DocumentUrl: documentUrl,
+            CloudinaryPublicId: publicId,
+            Review_Status: "PENDING",
+            postId,
+            unitId,
+          },
+        });
       });
 
+      // รอให้การสร้าง Document ทั้งหมดเสร็จสิ้น
+      const createdDocuments = await Promise.all(createDocumentPromises);
+
+      // --- สร้าง Notification แค่ครั้งเดียว ---
       const post = await tx.propertyPost.findUnique({
         where: { id: postId },
         select: { userId: true },
       });
       if (!post) throw new Error("Post not found");
 
+      // สร้าง Notification สำหรับ Seller
       await tx.notification.create({
         data: {
           userId: post.userId,
           Title: "มีเอกสารใหม่สำหรับตรวจสอบมัดจำ",
-          Message: `เอกสารมัดจำจาก: ${loggedInUser.First_name} ${loggedInUser.Last_name} สำหรับยูนิต #${unit.Unit_Number}`,
-          Status: "UNREAD",
+          Message: `${files.length} เอกสารถูกส่งจาก: ${loggedInUser.First_name} สำหรับยูนิต #${unit.Unit_Number}`,
           relatedProcess: "DOCUMENT_UPLOAD",
-          referenceId: document.id,
+          referenceId: unitId, // อ้างอิงถึง unitId แทน documentId
+          Status: "UNREAD", // (เพิ่ม) กำหนดสถานะเริ่มต้น
         },
       });
+
+      // สร้าง Notification สำหรับ Buyer
       await tx.notification.create({
         data: {
           userId,
-          Title: "เอกสารถูกส่งไปยังผู้ขายแล้ว",
-          Message: `รอการอนุมัติสำหรับยูนิต #${unit.Unit_Number}`,
-          Status: "UNREAD",
+          Title: "เอกสารของคุณถูกส่งไปยังผู้ขายแล้ว",
+          Message: `ส่งเอกสาร ${files.length} ฉบับสำหรับยูนิต #${unit.Unit_Number} สำเร็จ`,
           relatedProcess: "DOCUMENT_UPLOAD",
-          referenceId: document.id,
+          referenceId: unitId,
+          Status: "UNREAD", // (เพิ่ม) กำหนดสถานะเริ่มต้น
         },
       });
+      // ------------------------------------------
 
-      return document;
+      return createdDocuments; // ส่งคืน Array ของเอกสารที่สร้าง
     });
 
     res.json({
-      message: "Upload document successful and notification sent",
-      document: result,
+      message: `${resultDocuments.length} files uploaded successfully and notification sent`,
+      documents: resultDocuments,
     });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ message: "Server Error" });
+    const message = err.message || "Server Error";
+    res.status(500).json({ message });
   }
 };
 
@@ -900,17 +916,17 @@ export const updateDepositStatus = async (req, res) => {
       const meta =
         status === "CONFIRMED"
           ? {
-              Title: "การมัดจำของคุณได้รับการยืนยันแล้ว",
-              Message:
-                "ผู้ขายได้ยืนยันการชำระเงินมัดจำสำหรับโพสต์เรียบร้อยแล้ว",
-              relatedProcess: "DEPOSIT_CONFIRMED",
-            }
+            Title: "การมัดจำของคุณได้รับการยืนยันแล้ว",
+            Message:
+              "ผู้ขายได้ยืนยันการชำระเงินมัดจำสำหรับโพสต์เรียบร้อยแล้ว",
+            relatedProcess: "DEPOSIT_CONFIRMED",
+          }
           : {
-              Title: "การมัดจำของคุณถูกปฏิเสธ",
-              Message:
-                "ผู้ขายได้ปฏิเสธการมัดจำของคุณ กรุณาติดต่อผู้ขายเพื่อสอบถามรายละเอียดเพิ่มเติม",
-              relatedProcess: "DEPOSIT_REJECTED",
-            };
+            Title: "การมัดจำของคุณถูกปฏิเสธ",
+            Message:
+              "ผู้ขายได้ปฏิเสธการมัดจำของคุณ กรุณาติดต่อผู้ขายเพื่อสอบถามรายละเอียดเพิ่มเติม",
+            relatedProcess: "DEPOSIT_REJECTED",
+          };
 
       await tx.notification.create({
         data: {
@@ -1102,12 +1118,18 @@ export const createBooking = async (req, res) => {
           where: { id: unitId },
           select: { id: true, propertyPostId: true },
         });
+
         if (!slot || !unit) throw new Error("NOT_FOUND");
+
+        const postId = unit.propertyPostId;
+
         if (slot.isBooked) throw new Error("ALREADY_BOOKED");
-        if (slot.postId !== unit.propertyPostId)
+
+        if (slot.postId !== postId) // (แนะนำ) ใช้ตัวแปร postId ที่สร้างขึ้นมาใหม่
           throw new Error("SLOT_UNIT_MISMATCH");
 
         let buyerId;
+        
         const sellerId = slot.sellerId;
         if (bookerUserType === "Buyer") buyerId = sessionBuyerId;
         else if (bookerUserType === "Seller") {
@@ -1122,6 +1144,18 @@ export const createBooking = async (req, res) => {
         const booking = await tx.booking.create({
           data: { buyerId, sellerId, dateTimeSlotId, propertyUnitId: unitId },
         });
+
+        await tx.documentUpload.updateMany({
+          where: {
+            userId: req.session.user.userId,
+            postId: postId,
+            unitId: unitId
+          },
+          data: {
+            Review_Status: "HIDDEN",
+          }
+        })
+
         return booking;
       },
       { timeout: 10000 }

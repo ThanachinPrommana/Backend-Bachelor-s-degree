@@ -32,7 +32,6 @@ export const approveDocument = async (req, res) => {
     }
 
     const userType = getSessionUserType(req);
-    // เดิม: อนุญาตเฉพาะ SELLER; เพิ่ม ADMIN ให้ทำได้ด้วย (ถ้าไม่ต้องการ ลบบรรทัด ADMIN ออก)
     if (!["SELLER", "ADMIN"].includes(userType)) {
       return res.status(403).json({
         message: "Forbidden: Only sellers/admins can approve documents.",
@@ -50,7 +49,7 @@ export const approveDocument = async (req, res) => {
     const documentToUpdate = await prisma.documentUpload.findUnique({
       where: { id: documentId },
       include: {
-        Post: { select: { userId: true } }, // เจ้าของโพสต์ (Seller)
+        Post: { select: { userId: true } },
       },
     });
 
@@ -58,7 +57,6 @@ export const approveDocument = async (req, res) => {
       return res.status(404).json({ message: "Document not found" });
     }
 
-    // อนุญาตเฉพาะ "เจ้าของโพสต์" หรือ "ADMIN" เท่านั้น
     const postOwnerId = documentToUpdate?.Post?.userId ?? null;
     if (userType !== "ADMIN") {
       if (!postOwnerId || postOwnerId !== sessionUserId) {
@@ -74,7 +72,6 @@ export const approveDocument = async (req, res) => {
         data: { Review_Status: "APPROVED" },
       });
 
-      // แจ้งเตือนผู้ส่งเอกสาร (Buyer)
       await prisma.notification.create({
         data: {
           userId: updatedDocument.userId,
@@ -93,35 +90,52 @@ export const approveDocument = async (req, res) => {
     }
 
     // === REJECTED ===
-    const buyerId = documentToUpdate.userId; // เจ้าของเอกสาร (ผู้ส่ง)
-    const docName = documentToUpdate.DocumentName;
-    const cloudinaryPublicId = documentToUpdate.CloudinaryPublicId;
+    const {
+      userId: buyerId,
+      DocumentName: docName,
+      CloudinaryPublicId: cloudinaryPublicId,
+      unitId,
+      id: docId, // (เพิ่ม) ดึง id ของเอกสารมาด้วย
+    } = documentToUpdate;
 
+    // (สำคัญ) 1. ลบไฟล์ออกจาก Cloudinary ก่อนเริ่ม Transaction
     if (cloudinaryPublicId) {
       try {
         await cloudinary.uploader.destroy(cloudinaryPublicId);
       } catch (e) {
-        // ไม่ให้ล้มเพราะลบไฟล์ไม่สำเร็จ — log ไว้พอ
         console.warn("Cloudinary destroy failed:", e.message);
       }
     }
 
-    await prisma.documentUpload.delete({ where: { id: documentId } });
+    // 2. เริ่ม Transaction สำหรับงานฐานข้อมูลเท่านั้น
+    await prisma.$transaction(async (tx) => {
+      // 2.1 (ถ้ามี) อัปเดตสถานะยูนิตกลับเป็น AVAILABLE
+      if (unitId) {
+        await tx.propertyUnit.update({
+          where: { id: unitId },
+          data: { Status: "AVAILABLE" },
+        });
+      }
 
-    // แจ้งเตือนผู้ส่งเอกสาร (ถูกปฏิเสธ)
-    await prisma.notification.create({
-      data: {
-        userId: buyerId,
-        Title: "เอกสารของคุณถูกปฏิเสธ",
-        Message: `เอกสาร "${docName}" ที่คุณส่งมาถูกปฏิเสธและลบออกจากระบบแล้ว`,
-        Status: "UNREAD",
-        relatedProcess: "DOCUMENT_REJECTION",
-        // ไม่มี referenceId เพราะเอกสารถูกลบไปแล้ว
-      },
+      // 2.2 ลบเอกสารออกจากฐานข้อมูล
+      // เราไม่สามารถใช้ documentId ที่อยู่นอก Transaction ได้โดยตรง
+      // จึงใช้ docId ที่เราดึงมาจาก documentToUpdate แทน
+      await tx.documentUpload.delete({ where: { id: docId } });
+
+      // 2.3 สร้าง Notification แจ้งผู้ซื้อ
+      await tx.notification.create({
+        data: {
+          userId: buyerId,
+          Title: "เอกสารของคุณถูกปฏิเสธ",
+          Message: `เอกสาร "${docName}" ที่คุณส่งมาถูกปฏิเสธและยูนิตได้ถูกเปิดให้จองอีกครั้ง`,
+          Status: "UNREAD",
+          relatedProcess: "DOCUMENT_REJECTION",
+        },
+      });
     });
 
     return res.json({
-      message: "Document REJECTED and deleted successfully",
+      message: "Document REJECTED, and the unit is now available.",
     });
   } catch (err) {
     console.error("approveDocument error:", err);
@@ -220,3 +234,61 @@ export const searchDocument = async (req, res) => {
     return res.status(500).json({ message: "Server Error" });
   }
 };
+
+export const removeDocument = async (req, res) => {
+  try {
+    // 1. ตรวจสอบว่าผู้ใช้ล็อกอินอยู่หรือไม่
+    const sessionUserId = getSessionUserId(req);
+    if (!sessionUserId) {
+      return res.status(401).json({ message: "Unauthorized: Please log in." });
+    }
+
+    // 2. ดึง documentId จาก URL parameters
+    const { documentId } = req.params;
+    if (!documentId) {
+      return res.status(400).json({ message: "Document ID is required." });
+    }
+
+    // 3. ค้นหาเอกสารในฐานข้อมูล
+    const document = await prisma.documentUpload.findUnique({
+      where: { id: documentId },
+    });
+
+    // ถ้าไม่พบเอกสาร
+    if (!document) {
+      return res.status(404).json({ message: "Document not found." });
+    }
+
+    // (เพิ่ม) 4. ตรวจสอบสถานะเอกสาร: ต้องเป็น 'HIDDEN' เท่านั้น
+    if (document.Review_Status !== 'HIDDEN') {
+      return res.status(403).json({ message: "Forbidden: Only documents with HIDDEN status can be deleted." });
+    }
+
+    // 5. ตรวจสอบสิทธิ์: ต้องเป็นเจ้าของเอกสารเท่านั้น
+    if (document.userId !== sessionUserId) {
+      return res.status(403).json({ message: "Forbidden: You are not the owner of this document." });
+    }
+
+    // 6. ลบไฟล์ออกจาก Cloudinary (ถ้ามี publicId)
+    if (document.CloudinaryPublicId) {
+      try {
+        await cloudinary.uploader.destroy(document.CloudinaryPublicId);
+        console.log(`Successfully deleted file from Cloudinary: ${document.CloudinaryPublicId}`);
+      } catch (cloudinaryError) {
+        console.warn("Failed to delete file from Cloudinary, continuing with DB deletion:", cloudinaryError.message);
+      }
+    }
+
+    // 7. ลบข้อมูลเอกสารออกจากฐานข้อมูล
+    await prisma.documentUpload.delete({
+      where: { id: documentId },
+    });
+
+    // 8. ส่ง Response ยืนยันการลบสำเร็จ
+    return res.status(200).json({ message: "Document removed successfully." });
+
+  } catch (err) {
+    console.error("removeDocument error:", err);
+    return res.status(500).json({ message: "Server Error", error: err.message });
+  }
+}

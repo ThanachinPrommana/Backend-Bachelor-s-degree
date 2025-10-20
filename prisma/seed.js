@@ -6,9 +6,9 @@ const prisma = new PrismaClient();
 const categories = [
   { id: "cmegzfdya0006w2bwq5d8alc7", name: "condo" },
   { id: "cmegzfhx70007w2bwp63cbc1w", name: "house" },
-  { id: "cmegzfls20008w2bwf0arh8jq", name: "land" },
   { id: "cmegzfov30009w2bwrxjpt7xn", name: "villa" },
   { id: "cmegzft08000aw2bwx91l68z9", name: "townhouse" },
+  { id: "cmegzfls20008w2bwf0arh8jq", name: "land" },
   { id: "cmegzg3t1000cw2bw8shu6whw", name: "shop house" },
   { id: "cmegzg9ez000dw2bwgkdliy1a", name: "apartment" },
   { id: "cmegzgcmy000ew2bw72nen7zo", name: "penthouse" },

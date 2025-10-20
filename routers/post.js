@@ -11,6 +11,7 @@ import {
   searchFilters,
   getallcategory,
   getHomePagePosts, // ★ added
+  getallNamepropertyPost
 } from "../controllers/post.js";
 import { isAuthenticated } from "../Middlewares/authCheck.js";
 
@@ -55,4 +56,6 @@ router.post("/search/filters", searchFilters);
 // Home page posts
 router.get("/homepage/posts", getHomePagePosts);
 
+// Credit
+router.get("/credit/post", getallNamepropertyPost)
 export default router;

@@ -10,7 +10,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:studio": "prisma studio",
-    "prisma:deploy": "prisma migrate deploy"  
+    "prisma:deploy": "prisma migrate deploy"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +20,7 @@
     "@adminjs/design-system": "^4.1.1",
     "@adminjs/express": "^6.1.1",
     "@adminjs/prisma": "^5.0.4",
+    "@babel/register": "^7.28.3",
     "@prisma/client": "^6.16.2",
     "adminjs": "^7.8.17",
     "bcryptjs": "2.4.3",

@@ -132,7 +132,6 @@ enum BookingStatus {
 enum UnitStatus {
   AVAILABLE // ว่าง
   SOLD // ขายแล้ว
-  RENTED // เช่าแล้ว
   PENDING // กำลังดำเนินการ
 }
 

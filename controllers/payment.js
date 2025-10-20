@@ -39,6 +39,8 @@ export const createStripePaymentIntent = async (req, res) => {
       });
     }
 
+    //เปิดเมื่อไม่ test
+
     // 4. ดึงข้อมูลมัดจำ (Deposit)
     const deposit = await prisma.deposit.findFirst({
       where: { propertyUnitId: unitId },
@@ -48,6 +50,9 @@ export const createStripePaymentIntent = async (req, res) => {
       console.error(`[ERROR] Not Found: Deposit information not found for postId: ${postId}`);
       return res.status(404).json({ message: "Not Found: ไม่พบข้อมูลมัดจำสำหรับประกาศนี้" });
     }
+
+    //เปิดเมื่อไม่ test
+
     if (deposit.Deposit_Status !== "PENDING") {
       console.error(`[ERROR] Conflict: Deposit status for postId ${postId} is '${deposit.Deposit_Status}', not 'PENDING'.`);
       return res.status(409).json({ message: "Deposit ไม่อยู่ในสถานะ PENDING" });
@@ -56,6 +61,8 @@ export const createStripePaymentIntent = async (req, res) => {
     // (ส่วนยูนิตยังไม่จำเป็นต้องเช็คซ้ำ เพราะเช็คตั้งแต่ตอนอนุมัติเอกสารแล้ว)
 
     // 5. สร้าง Stripe Payment Intent
+    // const amount = deposit ? deposit.Deposit_Amount : 5000;
+    // const amountInSatang = Math.round(Number(amount) * 100);
     const amountInSatang = Math.round(Number(deposit.Deposit_Amount) * 100);
     if (!amountInSatang || amountInSatang <= 0) {
       console.error(`[ERROR] Invalid Amount: Calculated amount is ${amountInSatang} for postId: ${postId}`);
@@ -64,6 +71,7 @@ export const createStripePaymentIntent = async (req, res) => {
 
     // const idempotencyKey = `dep_${deposit.id}_unit_${unitId}_buyer_${buyerId}`;
     // เพิ่ม Date.now() เพื่อสร้าง key ใหม่ทุกครั้งที่ทดสอบ
+    // const testDepositId = deposit ? deposit.id : `test_${unitId}_${Date.now()}`;
     const idempotencyKey = `dep_${deposit.id}_unit_${unitId}_buyer_${buyerId}_${Date.now()}`;
     console.log(`[INFO] Creating Stripe Payment Intent with amount: ${amountInSatang} satang`);
 
@@ -74,6 +82,7 @@ export const createStripePaymentIntent = async (req, res) => {
         automatic_payment_methods: { enabled: true },
         metadata: {
           depositId: deposit.id,
+          // depositId:testDepositId,
           postId: postId, // ใช้ postId จาก req.body ที่ตรวจสอบแล้ว
           buyerId: buyerId,
           unitId: unitId,
@@ -121,13 +130,13 @@ export const handleStripeWebhook = async (req, res) => {
       const { depositId, postId, buyerId, unitId } = paymentIntent.metadata || {};
 
       // เพิ่มบรรทัดนี้เข้าไปเพื่อ Debug
-      console.log("🔴 DEBUG: Metadata received in webhook:", {
-        depositId,
-        postId,
-        buyerId,
-        unitId,
-        paymentIntentId: paymentIntent.id,
-      });
+      // console.log("🔴 DEBUG: Metadata received in webhook:", {
+      //   depositId,
+      //   postId,
+      //   buyerId,
+      //   unitId,
+      //   paymentIntentId: paymentIntent.id,
+      // });
       // ตรวจสอบ metadata
       if (!depositId || !postId || !buyerId || !unitId) {
         console.error(
@@ -155,6 +164,8 @@ export const handleStripeWebhook = async (req, res) => {
           .json({ received: true, message: "Event already processed." });
       }
 
+      const receiptUrl = paymentIntent.charges.data[0]?.receipt_url;
+
       await prisma.$transaction(async (tx) => {
         // 1) อัปเดต Deposit -> CONFIRMED + ผูก userId ของผู้จ่าย
         await tx.deposit.update({
@@ -172,22 +183,22 @@ export const handleStripeWebhook = async (req, res) => {
             postId: postId,
             PaymentType: "STRIPE", // enum ของคุณรองรับ STRIPE แล้ว
             Payment_Amount: paymentIntent.amount / 100, // กลับมาเป็นบาท
-            Payment_Slip: paymentIntent.id, // เก็บ PaymentIntent ID เป็นหลักฐาน
+            Payment_Slip: receiptUrl || paymentIntent.id, // เก็บ PaymentIntent ID เป็นหลักฐาน
             Status: "CONFIRMED",
           },
         });
-        
-        await tx.documentUpload.updateMany({
-          where: {
-            userId: buyerId,
-            postId: postId,
-            unitId: unitId,
-            Review_Status: "APPROVED",
-          },
-          data: {
-            Review_Status: "HIDDEN", // <-- เปลี่ยนจาก PAID เป็น HIDDEN
-          },
-        });
+
+        // await tx.documentUpload.updateMany({
+        //   where: {
+        //     userId: buyerId,
+        //     postId: postId,
+        //     unitId: unitId,
+        //     Review_Status: "APPROVED",
+        //   },
+        //   data: {
+        //     Review_Status: "HIDDEN", // <-- เปลี่ยนจาก PAID เป็น HIDDEN
+        //   },
+        // });
 
         // 3) (ออปชัน) อัปเดตสถานะยูนิตถ้าต้องการ
         // ณ ตอนนี้คุณออกแบบให้ยูนิตขึ้นเป็น PENDING ตั้งแต่ตอนอนุมัติเอกสารแล้ว
