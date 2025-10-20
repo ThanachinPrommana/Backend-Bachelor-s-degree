@@ -1,4 +1,4 @@
-// controllers/post.js (merged & resolved)
+// File: controllers/post.js
 import prisma from "../config/prisma.js";
 import cloudinary from "../utils/cloudinary.js";
 import {
@@ -8,20 +8,6 @@ import {
   filesOf,
   connectIf,
 } from "../utils/parse.js";
-
-const uploadWithAssetId = async (file, folder = "property_assets") => {
-  const result = await cloudinary.uploader.upload(file.path, {
-    folder,
-    resource_type: file.mimetype?.startsWith("video") ? "video" : "image",
-  });
-  console.log("Cloudinary result:", result?.asset_id, result?.resource_type);
-  return {
-    asset_id: result.asset_id,
-    public_id: result.public_id,
-    url: result.url,
-    secure_url: result.secure_url,
-  };
-};
 
 /* ========= Allowed enums (must match schema.prisma) ========= */
 const ALLOWED_LANDMARKS = [
@@ -38,10 +24,22 @@ const ALLOWED_AMENITIES = [
   "Pet_Friendly",
 ];
 
+// helpers
+const toStrArray = (v) =>
+  Array.isArray(v) ? v.map(String) : v ? [String(v)] : [];
+const toIntOrZero = (v) => {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : 0;
+};
+const toFloatOrZero = (v) => {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
 /* =============== CREATE (Post + Deposit per units or per post) =============== */
 export const createpost = async (req, res) => {
   try {
-    if (!req.session.user) {
+    if (!req.session || !req.session.user) {
       return res
         .status(401)
         .json({ message: "Unauthorized, please login first" });
@@ -73,10 +71,7 @@ export const createpost = async (req, res) => {
       Bedrooms,
       Description,
       Deposit_Amount,
-      Contract_Seller,
       LinkMap,
-      Latitude,
-      Longitude,
       Province,
       District,
       Subdistrict,
@@ -94,7 +89,6 @@ export const createpost = async (req, res) => {
       Bathroom,
       Other_related_expenses,
       categoryId,
-      Interest,
       floor,
       propertyUnits,
     } = req.body;
@@ -113,16 +107,19 @@ export const createpost = async (req, res) => {
     const imageFiles = filesOf(req.files, "images");
     const videoFiles = filesOf(req.files, "videos");
 
-    const imageData = imageFiles.length
-      ? await Promise.all(
-          imageFiles.map((f) => uploadWithAssetId(f, "property_images"))
-        )
-      : [];
-    const videoData = videoFiles.length
-      ? await Promise.all(
-          videoFiles.map((f) => uploadWithAssetId(f, "property_videos"))
-        )
-      : [];
+    // อ่านข้อมูลจาก CloudinaryStorage โดยตรง (ไม่อัปโหลดซ้ำ)
+    const imageData = imageFiles.map((f) => ({
+      url: f.secure_url || f.path,
+      secure_url: f.secure_url || null,
+      public_id: f.public_id || f.filename || null,
+      asset_id: f.asset_id || null,
+    }));
+    const videoData = videoFiles.map((f) => ({
+      url: f.secure_url || f.path,
+      secure_url: f.secure_url || null,
+      public_id: f.public_id || f.filename || null,
+      asset_id: f.asset_id || null,
+    }));
 
     // parse propertyUnits (stringified JSON หรือ array)
     let parsedPropertyUnits = [];
@@ -138,61 +135,63 @@ export const createpost = async (req, res) => {
       parsedPropertyUnits = propertyUnits;
     }
 
+    // กันค่า required numeric ว่างให้เป็น 0 (ตาม schema ที่ห้าม null)
+    const dataForCreate = {
+      Property_Name,
+      Province,
+      District,
+      Subdistrict,
+      Address,
+      Description,
+
+      Usable_Area: toFloatOrZero(Usable_Area), // Float (non-null)
+      Land_Size: toFloatOrZero(Land_Size), // Float (non-null)
+      Bedrooms: toIntOrZero(Bedrooms), // Int (non-null)
+      Bathroom: toIntOrZero(Bathroom), // Int (non-null)
+
+      Total_Rooms: toIntOrNull(Total_Rooms),
+      Year_Built, // string per schema
+      Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
+      Additional_Amenities: toEnumArray(
+        Additional_Amenities,
+        ALLOWED_AMENITIES
+      ),
+      Deposit_Amount: toFloatOrNull(Deposit_Amount),
+      LinkMap,
+      Price: toFloatOrZero(Price), // Float (non-null)
+      Parking_Space: toIntOrNull(Parking_Space),
+      Sell_Rent,
+      Link_line,
+      Link_facbook,
+      Name,
+      Phone,
+      Other_related_expenses: toStrArray(Other_related_expenses),
+      floor: toIntOrNull(floor),
+
+      NumberOfUnits:
+        parsedPropertyUnits?.length > 0 ? parsedPropertyUnits.length : 1,
+
+      ...(parsedPropertyUnits?.length > 0 && {
+        PropertyUnit: {
+          create: parsedPropertyUnits
+            .map((u) => String(u?.Unit_Number || "").trim())
+            .filter((s) => s.length > 0)
+            .map((Unit_Number) => ({ Unit_Number })),
+        },
+      }),
+
+      ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
+
+      user: { connect: { id: userId } },
+      seller: { connect: { id: effectiveSellerId } },
+
+      Image: imageData.length ? { create: imageData } : undefined,
+      Video: videoData.length ? { create: videoData } : undefined,
+    };
+
     const newPostWithDeposit = await prisma.$transaction(async (tx) => {
       const newPost = await tx.propertyPost.create({
-        data: {
-          Property_Name,
-          Province,
-          District,
-          Subdistrict,
-          Address,
-          Description,
-          Usable_Area: toFloatOrNull(Usable_Area),
-          Land_Size: toFloatOrNull(Land_Size),
-          Bedrooms: toIntOrNull(Bedrooms),
-          Bathroom: toIntOrNull(Bathroom),
-          Total_Rooms: toIntOrNull(Total_Rooms),
-          Year_Built, // string per schema
-          Nearby_Landmarks: toEnumArray(Nearby_Landmarks, ALLOWED_LANDMARKS),
-          Additional_Amenities: toEnumArray(
-            Additional_Amenities,
-            ALLOWED_AMENITIES
-          ),
-          Deposit_Amount: toFloatOrNull(Deposit_Amount),
-          Contract_Seller,
-          LinkMap,
-          Price: toFloatOrNull(Price),
-          Parking_Space: toIntOrNull(Parking_Space),
-          Sell_Rent,
-          Link_line,
-          Link_facbook,
-          Name,
-          Phone,
-          Latitude: toFloatOrNull(Latitude),
-          Longitude: toFloatOrNull(Longitude),
-          Other_related_expenses,
-          Interest: toFloatOrNull(Interest),
-          floor: toIntOrNull(floor),
-
-          NumberOfUnits:
-            parsedPropertyUnits?.length > 0 ? parsedPropertyUnits.length : 1,
-
-          ...(parsedPropertyUnits?.length > 0 && {
-            PropertyUnit: {
-              create: parsedPropertyUnits.map((unit) => ({
-                Unit_Number: unit.Unit_Number,
-              })),
-            },
-          }),
-
-          ...(connectIf(categoryId) ? { Category: connectIf(categoryId) } : {}),
-
-          user: { connect: { id: userId } },
-          seller: { connect: { id: effectiveSellerId } },
-
-          Image: imageData.length ? { create: imageData } : undefined,
-          Video: videoData.length ? { create: videoData } : undefined,
-        },
+        data: dataForCreate,
         include: { Image: true, Video: true, PropertyUnit: true },
       });
 
@@ -207,7 +206,7 @@ export const createpost = async (req, res) => {
         }));
         await tx.deposit.createMany({ data: depositData });
       } else {
-        // ไม่มียูนิต → สร้าง Deposit ผูกกับโพสต์ (ของเดิม)
+        // ไม่มียูนิต → สร้าง Deposit ผูกกับโพสต์
         await tx.deposit.create({
           data: {
             postId: newPost.id,
@@ -399,14 +398,8 @@ export const getPost = async (req, res) => {
             image: true,
           },
         },
-        seller: {
-          select: {
-            Status: true,
-          },
-        },
+        seller: { select: { Status: true } },
         Phone: true,
-        Latitude: true,
-        Longitude: true,
         Other_related_expenses: true,
         Status_post: true,
         PropertyUnit: { select: { id: true, Unit_Number: true, Status: true } },
@@ -476,7 +469,7 @@ export const updatePost = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!req.session.user || !req.session.user.sellerId) {
+    if (!req.session || !req.session.user || !req.session.user.sellerId) {
       return res.status(401).json({ message: "Unauthorized or not a seller" });
     }
     const { sellerId } = req.session.user;
@@ -500,10 +493,7 @@ export const updatePost = async (req, res) => {
       "Bedrooms",
       "Description",
       "Deposit_Amount",
-      "Contract_Seller",
       "LinkMap",
-      "Latitude",
-      "Longitude",
       "Province",
       "District",
       "Subdistrict",
@@ -521,9 +511,11 @@ export const updatePost = async (req, res) => {
       "Bathroom",
       "Other_related_expenses",
       "categoryId",
-      "Interest",
       "floor",
     ];
+
+    const REQUIRED_FLOATS = new Set(["Usable_Area", "Land_Size", "Price"]);
+    const REQUIRED_INTS = new Set(["Bedrooms", "Bathroom"]);
 
     const asInt = [
       "Bedrooms",
@@ -532,38 +524,50 @@ export const updatePost = async (req, res) => {
       "Parking_Space",
       "floor",
     ];
-    const asFloat = [
-      "Usable_Area",
-      "Land_Size",
-      "Deposit_Amount",
-      "Price",
-      "Latitude",
-      "Longitude",
-      "Interest",
-    ];
+    const asFloat = ["Usable_Area", "Land_Size", "Deposit_Amount", "Price"];
 
     const dataToUpdate = {};
     for (const [k, v] of Object.entries(req.body || {})) {
       if (!allowedFields.includes(k)) continue;
       if (v === undefined) continue;
 
+      // ค่าว่างในฟิลด์ที่ "ห้าม null" -> ข้าม (กันพัง)
+      if (
+        (v === "" || v === null) &&
+        (REQUIRED_FLOATS.has(k) || REQUIRED_INTS.has(k))
+      ) {
+        continue;
+      }
+
       if (v === "" || v === null) {
         if (k === "Nearby_Landmarks" || k === "Additional_Amenities") {
           dataToUpdate[k] = { set: [] };
         } else if (k === "categoryId") {
           dataToUpdate["Category"] = { disconnect: true };
+        } else if (k === "Other_related_expenses") {
+          dataToUpdate[k] = [];
         } else {
           dataToUpdate[k] = null;
         }
         continue;
       }
 
+      if (k === "Other_related_expenses") {
+        dataToUpdate[k] = toStrArray(v);
+        continue;
+      }
+
       if (asInt.includes(k)) {
-        dataToUpdate[k] = toIntOrNull(v);
+        const n = toIntOrNull(v);
+        // ถ้าเป็น required int แต่ parse ไม่ได้ -> ข้าม
+        if (REQUIRED_INTS.has(k) && (n === null || Number.isNaN(n))) continue;
+        dataToUpdate[k] = n;
         continue;
       }
       if (asFloat.includes(k)) {
-        dataToUpdate[k] = toFloatOrNull(v);
+        let n = toFloatOrNull(v);
+        if (REQUIRED_FLOATS.has(k) && (n === null || Number.isNaN(n))) continue;
+        dataToUpdate[k] = n;
         continue;
       }
 
@@ -604,15 +608,12 @@ export const updatePost = async (req, res) => {
       );
       await prisma.image.deleteMany({ where: { propertyPostId: id } });
 
-      const uploaded = await Promise.all(
-        newImages.map((f) => uploadWithAssetId(f, "property_images"))
-      );
       imageResult = await prisma.image.createMany({
-        data: uploaded.map((file) => ({
-          url: file.url,
-          public_id: file.public_id,
-          asset_id: file.asset_id,
-          secure_url: file.secure_url,
+        data: newImages.map((f) => ({
+          url: f.secure_url || f.path,
+          public_id: f.public_id || f.filename || null,
+          asset_id: f.asset_id || null,
+          secure_url: f.secure_url || null,
           propertyPostId: id,
         })),
       });
@@ -636,15 +637,12 @@ export const updatePost = async (req, res) => {
       );
       await prisma.video.deleteMany({ where: { propertyPostId: id } });
 
-      const uploadedV = await Promise.all(
-        newVideos.map((f) => uploadWithAssetId(f, "property_videos"))
-      );
       videoResult = await prisma.video.createMany({
-        data: uploadedV.map((file) => ({
-          url: file.url,
-          public_id: file.public_id,
-          asset_id: file.asset_id,
-          secure_url: file.secure_url,
+        data: newVideos.map((f) => ({
+          url: f.secure_url || f.path,
+          public_id: f.public_id || f.filename || null,
+          asset_id: f.asset_id || null,
+          secure_url: f.secure_url || null,
           propertyPostId: id,
         })),
       });
@@ -676,7 +674,7 @@ export const getallcategory = async (_req, res) => {
 /* =============== HOMEPAGE FEED (personalized ordering) =============== */
 export const getHomePagePosts = async (req, res) => {
   try {
-    const userFromSession = req.session.user;
+    const userFromSession = req.session?.user;
     const userId = userFromSession ? userFromSession.userId : null;
     let buyerPreferences = null;
 
