@@ -1425,6 +1425,9 @@ export const confirmedSlipBySeller = async (req, res) => {
     // (เพิ่ม) รับค่า status จาก body
     const { bookingStatus } = req.body;
     const { userId, First_name } = req.session.user; // (เพิ่ม) ดึง First_name มาใช้
+    // --- Log ที่ 1: ดูว่า Server ได้รับอะไร ---
+    console.log("Received request body:", req.body);
+    console.log("Extracted bookingStatus:", bookingStatus);
 
     // --- การตรวจสอบเบื้องต้น (เหมือนเดิม) ---
     if (bookingStatus !== 'COMPLETED' && bookingStatus !== 'CANCELLED') {

@@ -291,7 +291,7 @@ export const getProfile = async (req, res) => {
               select: {
                 id: true,
                 bookingStatus: true,
-                finalSlipUrl: true,
+                propertyUnitId: true,
                 propertyUnit: {
                   select: {
                     propertyPost: {
@@ -314,11 +314,7 @@ export const getProfile = async (req, res) => {
                       select: {
                         First_name: true,
                         Last_name: true,
-                        Payment: {
-                          select: {
-                            Payment_Slip: true,
-                          }
-                        }
+                
 
                       }
                     }
