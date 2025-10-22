@@ -1,6 +1,7 @@
-// routers/post.js (ESM) — FIXED to match server & controllers
+// routes/post.js
 import express from "express";
 import propertyUpload from "../Middlewares/propertyUploader.js";
+import { isAuthenticated } from "../Middlewares/authCheck.js";
 import {
   createpost,
   getbycategory,
@@ -11,11 +12,15 @@ import {
   getallcategory,
   getHomePagePosts,
 } from "../controllers/post.js";
-import { isAuthenticated } from "../Middlewares/authCheck.js";
 
 const router = express.Router();
 
-// routers/post.js
+/**
+ * สำคัญ:
+ * - ใช้ propertyUpload.fields([...]) แค่ที่ไฟล์ route นี้ "ครั้งเดียว"
+ * - controller (createpost/updatePost) จะอ่านจาก req.files.images / req.files.videos
+ */
+
 router.post(
   "/propertypost",
   isAuthenticated,
@@ -26,19 +31,13 @@ router.post(
   createpost
 );
 
-// Get posts by category
-router.get("/post/category/:categoryId", getbycategory);
-
 // Get single property post
 router.get("/propertypost/:id", getPost);
 
-// Get all categories
-router.get("/allcategory", getallcategory);
-
-// Delete property post (ควรต้องล็อกอิน)
+// Delete property post (ต้องเป็นเจ้าของหรือแอดมิน — เช็คใน controller/ middleware เพิ่มได้)
 router.delete("/propertypost/:id", isAuthenticated, removepost);
 
-// Update property post (ควรต้องล็อกอิน)
+// Update property post (รองรับอัปเดตรูป/วิดีโอด้วยการอัปใหม่)
 router.patch(
   "/propertypost/:id",
   isAuthenticated,
@@ -49,10 +48,10 @@ router.patch(
   updatePost
 );
 
-// Search posts by filters
+// Public feeds / searches
 router.post("/search/filters", searchFilters);
-
-// Home page posts
+router.get("/post/category/:categoryId", getbycategory);
+router.get("/allcategory", getallcategory);
 router.get("/homepage/posts", getHomePagePosts);
 
 export default router;
