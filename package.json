@@ -10,7 +10,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:studio": "prisma studio",
-    "prisma:deploy": "prisma migrate deploy"  
+    "prisma:deploy": "prisma migrate deploy"
   },
   "keywords": [],
   "author": "",
@@ -40,7 +40,7 @@
     "nodemailer": "6.9.14",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "stripe": "18.5.0",
+    "stripe": "^18.5.0",
     "twilio": "5.2.0"
   },
   "devDependencies": {
