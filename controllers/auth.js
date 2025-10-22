@@ -260,7 +260,6 @@ export const resetPassword = async (req, res) => {
       data: { Password: hashed },
     });
 
-    // ใช้ deleteMany เผื่อกรณี token ซ้ำ/หลงเหลือ
     await prisma.passwordResetToken.deleteMany({ where: { token } });
 
     return res.json({ message: "Password updated" });
@@ -287,12 +286,12 @@ export const getProfile = async (req, res) => {
             RealEstate_License: true,
             Status: true,
             nationalIdImage: true,
-            // จากไฟล์ที่จะ merge:
             DateTimeSlot: true,
             Booking: {
               select: {
                 id: true,
                 bookingStatus: true,
+                finalSlipUrl: true,
                 propertyUnit: {
                   select: {
                     propertyPost: {
@@ -328,6 +327,13 @@ export const getProfile = async (req, res) => {
               }
             }
           },
+        },
+        Payment: {
+          select: {
+            Payment_Slip: true,
+            postId: true,
+            unitId: true,
+          }
         },
         Buyer: {
           select: {
@@ -348,6 +354,7 @@ export const getProfile = async (req, res) => {
               select: {
                 id: true,
                 bookingStatus: true,
+                propertyUnitId: true,
                 propertyUnit: {
                   select: {
                     propertyPost: {
@@ -374,27 +381,27 @@ export const getProfile = async (req, res) => {
                     }
                   }
                 },
-                Buyer: {
-                  select: {
-                    user: {
-                      select: {
-                        First_name: true,
-                        Last_name: true,
-                        Payment: {
-                          select: {
-                            Payment_Slip: true,
-                          }
-                        }
+                // Buyer: {
+                //   select: {
+                //     user: {
+                //       select: {
+                //         First_name: true,
+                //         Last_name: true,
+                //         Payment: {
+                //           select: {
+                //             Payment_Slip: true,
+                //             postId: true
+                //           }
+                //         }
 
-                      }
-                    }
-                  }
-                }
+                //       }
+                //     }
+                //   }
+                // }
               }
             }
           },
         },
-        // จากไฟล์ที่จะ merge:
         Deposit: {
           select: {
             id: true,
@@ -418,6 +425,30 @@ export const getProfile = async (req, res) => {
             Image: true,
             Deposit: true,
             sellerId: true,
+            PropertyUnit: {
+              select: {
+                id: true,
+                Unit_Number: true,
+                Booking: {
+                  select: {
+                    id: true,
+                    bookingStatus: true,
+                    finalSlipUrl: true,
+                    Buyer: {
+                      select: {
+                        user: {
+                          select: {
+                            id: true,
+                            First_name: true,
+                            Last_name: true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
             DocumentUpload: {
               orderBy: { createdAt: "desc" },
               select: {
@@ -453,7 +484,8 @@ export const getProfile = async (req, res) => {
                     Booking: {
                       select: {
                         id: true,
-                        bookingStatus: true
+                        bookingStatus: true,
+                        finalSlipUrl: true
                       }
                     }
                   }
@@ -492,6 +524,13 @@ export const getProfile = async (req, res) => {
                     Deposit_Status: true
                   }
                 },
+                Booking: {
+                  select: {
+                    id: true,
+                    bookingStatus: true,
+                    finalSlipUrl: true,
+                  }
+                }
 
               }
             }

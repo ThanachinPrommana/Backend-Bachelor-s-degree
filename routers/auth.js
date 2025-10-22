@@ -1,5 +1,4 @@
-// routes/auth.js (merged & reconciled, ESM)
-
+// routers/auth.js (ESM, complete for server ESM)
 import express from "express";
 const router = express.Router();
 
@@ -16,14 +15,13 @@ import {
 
 import { isAuthenticated } from "../Middlewares/authCheck.js";
 import { uploadNationalId } from "../Middlewares/uploadNationalIdImage.js";
-// ^ ใช้ตัวอัปโหลดเฉพาะสำหรับบัตรประชาชน (โฟลเดอร์ seller_documents)
 
 // สมัคร/ยืนยัน/ล็อกอิน
 router.post("/preRegister", preRegister);
 router.post("/verifyandregister", verifyandregister);
 router.post("/login", login);
 
-// สมัครเป็นผู้ขาย: ต้องล็อกอินก่อน + อัปโหลดรูปบัตร
+// สมัครเป็นผู้ขาย: ต้องล็อกอินก่อน + อัปโหลดรูปบัตร ปชช.
 router.post(
   "/seller/register",
   isAuthenticated,
@@ -35,10 +33,10 @@ router.post(
 router.post("/forgotpassword", forgotPassword);
 router.post("/resetpassword", resetPassword);
 
-// โปรไฟล์
+// โปรไฟล์ของผู้ใช้ที่ล็อกอินอยู่ (อ่านจาก session)
 router.get("/profiles/user", isAuthenticated, getProfile);
 
-// ออกจากระบบ
-router.post("/logout", logout);
+// ออกจากระบบ (ต้องอยู่ใน session ก่อน)
+router.post("/logout", isAuthenticated, logout);
 
 export default router;

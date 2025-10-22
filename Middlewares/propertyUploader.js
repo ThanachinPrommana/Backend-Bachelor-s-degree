@@ -1,58 +1,59 @@
 // File: Middlewares/propertyUploader.js
+import multer from "multer";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import cloudinary from "../utils/cloudinary.js";
 
-import multer from 'multer';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
-import cloudinary from '../utils/cloudinary.js';
+/**
+ * หมายเหตุสำคัญ:
+ * - ใช้ CloudinaryStorage แล้ว => ไฟล์ถูกอัปโหลดขึ้น Cloudinary ทันทีระหว่าง multer ทำงาน
+ * - ดังนั้นใน controller "อย่าอัปโหลดซ้ำ" (อย่าเรียก cloudinary.uploader.upload(file.path) อีก)
+ *   ให้ดึงข้อมูลจาก req.files โดยตรง เช่น f.secure_url, f.path, f.public_id
+ */
 
-// 1. สร้าง CloudinaryStorage ที่ตรวจสอบประเภทไฟล์เพื่อกำหนดค่าแบบไดนามิก
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: async (req, file) => {
-    // ตรวจสอบ mimetype ของไฟล์เพื่อกำหนดค่าที่จะส่งให้ Cloudinary
-    let folderName;
-    let resourceType;
-    let allowedFormats;
-
-    if (file.mimetype.startsWith("image")) {
-      // ---- กรณีเป็นไฟล์รูปภาพ ----
-      folderName = "property_images";
-      resourceType = "image";
-      allowedFormats = ["jpg", "jpeg", "png", "gif"];
-    } else if (file.mimetype.startsWith("video")) {
-      // ---- กรณีเป็นไฟล์วิดีโอ ----
-      folderName = "property_videos";
-      resourceType = "video";
-      allowedFormats = ["mp4", "mov", "avi", "mkv"];
-    } else {
-      // ให้ fileFilter เป็นตัวบล็อกไฟล์ที่ไม่รองรับ (อย่าส่ง error object กลับไปที่ params)
-      folderName = "raw_uploads";
-      resourceType = "raw";
-      allowedFormats = undefined;
+  cloudinary,
+  params: async (_req, file) => {
+    // รองรับ mimetype ตามที่ฝั่ง Front อนุญาต
+    if (file.mimetype.startsWith("image/")) {
+      return {
+        folder: "property_images",
+        resource_type: "image",
+        // ✅ เพิ่ม webp ให้ตรงกับฝั่ง Front
+        allowed_formats: ["jpg", "jpeg", "png", "gif", "webp"],
+        // สามารถเปิดใช้ได้ถ้าต้องการบีบอัตโนมัติ:
+        // transformation: [{ quality: "auto", fetch_format: "auto" }],
+      };
     }
-
-    // คืนค่า object ที่มี configuration ที่ถูกต้องกลับไป
-    return {
-      folder: folderName,
-      resource_type: resourceType,
-      allowed_formats: allowedFormats,
-    };
+    if (file.mimetype.startsWith("video/")) {
+      return {
+        folder: "property_videos",
+        resource_type: "video",
+        // ✅ เพิ่ม webm และตัด avi/mkv ที่ Front ไม่ใช้
+        allowed_formats: ["mp4", "mov", "webm"],
+      };
+    }
+    // อื่น ๆ ปัดไปเป็น raw (หรือบล็อกทิ้งด้วย fileFilter ด้านล่าง)
+    return { folder: "raw_uploads", resource_type: "raw" };
   },
 });
 
-const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith("image") || file.mimetype.startsWith("video")) {
-    cb(null, true); // อนุญาตให้ไฟล์ผ่าน
-  } else {
-    cb(new Error("File type not supported! Please upload only images or videos."), false); // ปฏิเสธไฟล์
-  }
+const fileFilter = (_req, file, cb) => {
+  const isImage = file.mimetype.startsWith("image/");
+  const isVideo = file.mimetype.startsWith("video/");
+  if (isImage || isVideo) return cb(null, true);
+  return cb(
+    new Error("File type not supported! Please upload only images or videos."),
+    false
+  );
 };
 
-// 3. สร้าง Multer instance พร้อม configuration ทั้งหมด
 const propertyUpload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
+  storage,
+  fileFilter,
   limits: {
-    fileSize: 1024 * 1024 * 100, // 100MB
+    // แนะนำให้ตั้ง size ให้ “เผื่อ” จากฝั่ง Front (รูป ~5MB/ไฟล์, วิดีโอ ~50MB/ไฟล์)
+    fileSize: 60 * 1024 * 1024, // 60MB/ไฟล์ (พอสำหรับวิดีโอสั้น)
+    files: 7, // 5 รูป + 2 วิดีโอ สูงสุด (ตาม UX ปัจจุบัน)
   },
 });
 

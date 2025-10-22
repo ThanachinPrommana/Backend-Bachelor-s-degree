@@ -110,64 +110,51 @@ export const createStripePaymentIntent = async (req, res) => {
  * - ห้ามมี express.json() มาก่อน route นี้
  */
 export const handleStripeWebhook = async (req, res) => {
+  // ... ส่วนประกาศ sig, endpointSecret, event และ try-catch แรกเหมือนเดิม ...
   const sig = req.headers["stripe-signature"];
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
   let event;
 
   try {
-    // req.body ต้องเป็น raw Buffer (เพราะใช้ express.raw)
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
   } catch (err) {
     console.log(`❌ Webhook signature verification failed.`, err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  try {
-    if (event.type === "payment_intent.succeeded") {
-      const paymentIntent = event.data.object;
+  // --- เริ่มแก้ไขจากตรงนี้ ---
+  if (event.type === "payment_intent.succeeded") {
+    const paymentIntent = event.data.object;
+    const { depositId, postId, buyerId, unitId } = paymentIntent.metadata || {};
 
-      // อ่าน metadata
-      const { depositId, postId, buyerId, unitId } = paymentIntent.metadata || {};
+    if (!depositId || !postId || !buyerId || !unitId) {
+      console.error("❌ Webhook Error: Missing metadata in payment intent", paymentIntent.id);
+      return res.status(400).send("Webhook Error: Missing required metadata.");
+    }
 
-      // เพิ่มบรรทัดนี้เข้าไปเพื่อ Debug
-      // console.log("🔴 DEBUG: Metadata received in webhook:", {
-      //   depositId,
-      //   postId,
-      //   buyerId,
-      //   unitId,
-      //   paymentIntentId: paymentIntent.id,
-      // });
-      // ตรวจสอบ metadata
-      if (!depositId || !postId || !buyerId || !unitId) {
-        console.error(
-          "❌ Webhook Error: Missing metadata in payment intent",
-          paymentIntent.id
-        );
-        return res
-          .status(400)
-          .send("Webhook Error: Missing required metadata.");
-      }
+    const existingDeposit = await prisma.deposit.findUnique({
+      where: { id: depositId },
+      select: { id: true, Deposit_Status: true },
+    });
 
-      // Idempotency check + ธุรกรรม DB
-      const existingDeposit = await prisma.deposit.findUnique({
-        where: { id: depositId },
-        select: { id: true, Deposit_Status: true },
-      });
+    if (!existingDeposit || existingDeposit.Deposit_Status !== "PENDING") {
+      console.log(`☑️ Webhook for depositId: ${depositId} already processed or invalid.`);
+      return res.status(200).json({ received: true, message: "Event already processed." });
+    }
 
-      if (!existingDeposit || existingDeposit.Deposit_Status !== "PENDING") {
-        // เคยอัปเดตไปแล้ว หรือสถานะไม่ถูกต้อง — ตอบ 200 เพื่อไม่ให้ Stripe ส่งซ้ำ
-        console.log(
-          `☑️ Webhook for depositId: ${depositId} already processed or invalid.`
-        );
-        return res
-          .status(200)
-          .json({ received: true, message: "Event already processed." });
-      }
-
-      const receiptUrl = paymentIntent.charges.data[0]?.receipt_url;
+    // --- ส่วนที่แก้ไข ---
+    try {
+      // ดึงข้อมูล Payment Intent อีกครั้งเพื่อเอา receipt_url ที่แน่นอน
+      const retrievedPaymentIntent = await stripe.paymentIntents.retrieve(
+        paymentIntent.id, // <-- (สำคัญ) แก้ไขชื่อตัวแปรให้ถูกต้อง
+        {
+          expand: ["latest_charge"], // <-- (แนะนำ) ใช้วิธีนี้จะดีกว่า
+        }
+      );
+      const receiptUrl = retrievedPaymentIntent.latest_charge?.receipt_url;
 
       await prisma.$transaction(async (tx) => {
-        // 1) อัปเดต Deposit -> CONFIRMED + ผูก userId ของผู้จ่าย
+        // 1) อัปเดต Deposit
         await tx.deposit.update({
           where: { id: depositId },
           data: {
@@ -181,44 +168,27 @@ export const handleStripeWebhook = async (req, res) => {
           data: {
             userId: buyerId,
             postId: postId,
-            PaymentType: "STRIPE", // enum ของคุณรองรับ STRIPE แล้ว
-            Payment_Amount: paymentIntent.amount / 100, // กลับมาเป็นบาท
-            Payment_Slip: receiptUrl || paymentIntent.id, // เก็บ PaymentIntent ID เป็นหลักฐาน
+            unitId: unitId,
+            PaymentType: "STRIPE",
+            Payment_Amount: paymentIntent.amount / 100,
+            Payment_Slip: receiptUrl || paymentIntent.id, // ใช้ receiptUrl หรือ ID เป็นค่าสำรอง
             Status: "CONFIRMED",
           },
         });
-
-        // await tx.documentUpload.updateMany({
-        //   where: {
-        //     userId: buyerId,
-        //     postId: postId,
-        //     unitId: unitId,
-        //     Review_Status: "APPROVED",
-        //   },
-        //   data: {
-        //     Review_Status: "HIDDEN", // <-- เปลี่ยนจาก PAID เป็น HIDDEN
-        //   },
-        // });
-
-        // 3) (ออปชัน) อัปเดตสถานะยูนิตถ้าต้องการ
-        // ณ ตอนนี้คุณออกแบบให้ยูนิตขึ้นเป็น PENDING ตั้งแต่ตอนอนุมัติเอกสารแล้ว
-        // ถ้าต้องการกันซ้ำมากขึ้น อาจอัปเดตเป็น SOLD/RENTED ภายหลังในขั้นตอนสุดท้าย
-        // await tx.propertyUnit.update({
-        //   where: { id: unitId },
-        //   data: { Status: "PENDING" }, // หรือสถานะอื่นตาม flow ของคุณ
-        // });
       });
 
       console.log(`✅ Database updated successfully for depositId: ${depositId}`);
-    } else {
-      console.log(`💡 Unhandled event type ${event.type}`);
+
+    } catch (dbError) {
+      console.error("❌ Error during database transaction:", dbError);
+      // ถ้า Error ในส่วนนี้ ให้ตอบ 500 เพื่อให้ Stripe ส่งมาใหม่
+      return res.status(500).json({ error: "Database update failed." });
     }
 
-    // ตอบกลับ 200 เพื่อยืนยันการรับ Event
-    return res.status(200).json({ received: true });
-  } catch (err) {
-    console.error("❌ Error handling webhook:", err);
-    // ถ้าเป็น error ของฝั่งเรา ให้ตอบ 500 เพื่อให้ Stripe retry
-    return res.status(500).json({ error: "Database update failed." });
+  } else {
+    console.log(`💡 Unhandled event type ${event.type}`);
   }
+
+  // ตอบกลับ 200 เพื่อยืนยันว่ารับ Webhook แล้ว
+  return res.status(200).json({ received: true });
 };

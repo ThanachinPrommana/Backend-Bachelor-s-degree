@@ -1,5 +1,4 @@
-// routes/document.js (ESM)
-
+// routers/document.js (ESM)
 import express from "express";
 import {
   approveDocument,

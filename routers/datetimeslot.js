@@ -1,5 +1,4 @@
-// routes/datetimeslot.js (ESM)
-
+// routers/datetimeslot.js (ESM)
 import express from "express";
 import { getAvailableSlotsForPost } from "../controllers/datetimeslot.js";
 

@@ -1,11 +1,12 @@
-import express from 'express';
-import cors from 'cors';
-import morgan from 'morgan';
-import { readdirSync } from 'fs';
-import 'dotenv/config';
-import session from 'express-session';
-import path from 'path';
-import { fileURLToPath } from 'url';
+// server.js — merged & conflict-resolved (ESM)
+import express from "express";
+import cors from "cors";
+import morgan from "morgan";
+import { readdirSync } from "fs";
+import "dotenv/config";
+import session from "express-session";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import AdminJS from 'adminjs';
 import { Database, Resource } from "@adminjs/prisma";
@@ -19,7 +20,7 @@ import { admin } from "./Admin/admin.config.js"; // ✅ นำเข้า confi
 
 const PORT = process.env.PORT || 8200;
 const app = express();
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -28,9 +29,9 @@ const __dirname = path.dirname(__filename);
 // =================================================================
 AdminJS.registerAdapter({ Database, Resource });
 
-// =================================================================
-// 2. Middlewares พื้นฐาน
-// =================================================================
+/* =================================================================
+ * 2) Middlewares (logger, CORS, static)
+ * ================================================================= */
 app.use(morgan("dev"));
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',
@@ -137,6 +138,8 @@ app.listen(PORT, () => {
   console.log(`🚀 Server on port ${PORT}`);
   startNotificationSchedulers();
 });
+
+
 
 // import express from 'express';
 // import cors from 'cors';
