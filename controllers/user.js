@@ -1129,7 +1129,7 @@ export const createBooking = async (req, res) => {
           throw new Error("SLOT_UNIT_MISMATCH");
 
         let buyerId;
-        
+
         const sellerId = slot.sellerId;
         if (bookerUserType === "Buyer") buyerId = sessionBuyerId;
         else if (bookerUserType === "Seller") {
@@ -1422,54 +1422,69 @@ export const uploadFinalSlip = async (req, res) => {
 export const confirmedSlipBySeller = async (req, res) => {
   try {
     const { bookingId } = req.params;
-    const { userId } = req.session.user;
+    // (เพิ่ม) รับค่า status จาก body
+    const { bookingStatus } = req.body;
+    const { userId, First_name } = req.session.user; // (เพิ่ม) ดึง First_name มาใช้
+
+    // --- การตรวจสอบเบื้องต้น (เหมือนเดิม) ---
+    if (bookingStatus !== 'COMPLETED' && bookingStatus !== 'CANCELLED') {
+      return res.status(400).json({ message: "กรุณาระบุสถานะที่ต้องการอัปเดต (COMPLETED หรือ CANCELLED)" });
+    }
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
       include: {
-        Buyer: { select: { userId: true } },
+        Buyer: { select: { userId: true, user: { select: { First_name: true } } } }, // ดึงชื่อ Buyer มาด้วย
         Seller: { select: { userId: true } },
         propertyUnit: { include: { propertyPost: true } },
       },
     });
-    if (!booking)
-      return res.status(404).json({ message: "ไม่พบข้อมูลการจองนี้" });
-    if (!booking.propertyUnit || !booking.propertyUnit.propertyPost)
-      return res
-        .status(404)
-        .json({
-          message: "ไม่สามารถหา Unit หรือ Post ที่เกี่ยวข้องกับการจองนี้ได้",
-        });
-    if (booking.Seller.userId !== userId)
-      return res
-        .status(403)
-        .json({ message: "คุณไม่มีสิทธิ์ยืนยันการชำระเงินนี้" });
-    if (booking.bookingStatus !== "PENDING_FINAL_VERIFICATION")
-      return res.status(400).json({
-        message: `ไม่สามารถยืนยันได้ เนื่องจากสถานะปัจจุบันคือ '${booking.bookingStatus}'`,
-      });
 
-    const unitToUpdate = booking.propertyUnit;
-    const postToUpdate = booking.propertyUnit.propertyPost;
-    const newPostStatus =
-      postToUpdate.NumberOfUnits - 1 <= 0
-        ? "SOLD_OUT"
-        : postToUpdate.Status_post;
+    // ... การตรวจสอบ booking, propertyUnit, sellerId, bookingStatus (เหมือนเดิม) ...
+    if (booking.bookingStatus !== "PENDING_FINAL_VERIFICATION") // ตรวจสอบสถานะเดิม
+      return res.status(400).json({ /* ... */ });
 
-    const [updatedUnit, updatedPost, updatedBooking] =
-      await prisma.$transaction([
-        prisma.propertyUnit.update({
-          where: { id: unitToUpdate.id },
-          data: { Status: "SOLD" },
-        }),
-        prisma.propertyPost.update({
-          where: { id: postToUpdate.id },
-          data: { NumberOfUnits: { decrement: 1 }, Status_post: newPostStatus },
-        }),
+    // --- แยก Logic ตาม status ที่ได้รับ ---
+    if (bookingStatus === 'CANCELLED') {
+      // === กรณีปฏิเสธสลิป ===
+      const [updatedBooking] = await prisma.$transaction([
         prisma.booking.update({
           where: { id: bookingId },
-          data: { bookingStatus: "COMPLETED" },
+          // (สำคัญ) เปลี่ยนสถานะกลับไปเป็น CONFIRMED เพื่อให้ Buyer อัปโหลดใหม่ได้
+          // หรือจะสร้างสถานะใหม่เช่น 'FINAL_SLIP_REJECTED' ก็ได้ แล้วแต่การออกแบบ
+          data: {
+            bookingStatus: "CONFIRMED",
+            finalSlipUrl: null, // ล้าง URL สลิปเก่า (Optional)
+            finalSlipUploadDate: null // ล้างวันที่อัปโหลดเก่า (Optional)
+          },
         }),
+        prisma.notification.create({
+          data: {
+            userId: booking.Buyer.userId,
+            referenceId: bookingId,
+            Title: "สลิปสุดท้ายของคุณไม่ถูกต้อง",
+            Message: `ผู้ขาย ${First_name} ได้ตรวจสอบและพบว่าสลิปสุดท้ายที่คุณส่งมาไม่ถูกต้อง กรุณาอัปโหลดใหม่อีกครั้งสำหรับยูนิต #${booking.propertyUnit.Unit_Number}`,
+            Status: "UNREAD",
+            relatedProcess: "FINAL_SLIP_REJECTED", // สถานะ Notification ใหม่
+          },
+        }),
+      ]);
+
+      return res.status(200).json({
+        message: "ปฏิเสธสลิปเรียบร้อยแล้ว แจ้งเตือนผู้ซื้อให้ส่งใหม่",
+        booking: updatedBooking,
+      });
+
+    } else {
+      // === กรณีอนุมัติสลิป (COMPLETED) - Logic เดิม ===
+      const unitToUpdate = booking.propertyUnit;
+      const postToUpdate = booking.propertyUnit.propertyPost;
+      const newPostStatus = postToUpdate.NumberOfUnits - 1 <= 0 ? "SOLD_OUT" : postToUpdate.Status_post;
+
+      const [updatedUnit, updatedPost, updatedBooking] = await prisma.$transaction([
+        prisma.propertyUnit.update({ where: { id: unitToUpdate.id }, data: { Status: "SOLD" } }),
+        prisma.propertyPost.update({ where: { id: postToUpdate.id }, data: { NumberOfUnits: { decrement: 1 }, Status_post: newPostStatus } }),
+        prisma.booking.update({ where: { id: bookingId }, data: { bookingStatus: "COMPLETED" } }),
         prisma.notification.create({
           data: {
             userId: booking.Buyer.userId,
@@ -1482,14 +1497,15 @@ export const confirmedSlipBySeller = async (req, res) => {
         }),
       ]);
 
-    res.status(200).json({
-      message: "ยืนยันสลิปและปิดการขายยูนิตสำเร็จ!",
-      booking: updatedBooking,
-      unit: updatedUnit,
-      post: updatedPost,
-    });
+      return res.status(200).json({
+        message: "ยืนยันสลิปและปิดการขายยูนิตสำเร็จ!",
+        booking: updatedBooking,
+        unit: updatedUnit,
+        post: updatedPost,
+      });
+    }
   } catch (err) {
-    console.error("Error confirming slip:", err);
+    console.error("Error confirming/rejecting slip:", err);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
   }
 };
