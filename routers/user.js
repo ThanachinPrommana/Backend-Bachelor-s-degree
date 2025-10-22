@@ -1,4 +1,4 @@
-// routes/user.merged.final.js
+// routers/user.merged.final.js
 import express from "express";
 import upload from "../Middlewares/upload.js";
 import uploadDocument from "../Middlewares/document.js";
@@ -158,7 +158,7 @@ router.patch(
 router.post(
   "/document",
   isAuthenticated,
-  uploadDocument.single("document"),
+  uploadDocument.array("documents", 3), 
   useruploadDocument
 );
 

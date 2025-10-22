@@ -1,5 +1,4 @@
-// routes/post.js (ESM) — MERGED
-
+// routers/post.js (ESM) — FIXED to match server & controllers
 import express from "express";
 import propertyUpload from "../Middlewares/propertyUploader.js";
 import {
@@ -11,12 +10,13 @@ import {
   searchFilters,
   getallcategory,
   getHomePagePosts, // ★ added
+  getallNamepropertyPost
 } from "../controllers/post.js";
 import { isAuthenticated } from "../Middlewares/authCheck.js";
 
 const router = express.Router();
 
-// Create property post
+// routers/post.js
 router.post(
   "/propertypost",
   isAuthenticated,
@@ -36,12 +36,13 @@ router.get("/propertypost/:id", getPost);
 // Get all categories
 router.get("/allcategory", getallcategory);
 
-// Delete property post
-router.delete("/propertypost/:id", removepost);
+// Delete property post (ควรต้องล็อกอิน)
+router.delete("/propertypost/:id", isAuthenticated, removepost);
 
-// Update property post
+// Update property post (ควรต้องล็อกอิน)
 router.patch(
   "/propertypost/:id",
+  isAuthenticated,
   propertyUpload.fields([
     { name: "images", maxCount: 5 },
     { name: "videos", maxCount: 2 },
@@ -55,4 +56,6 @@ router.post("/search/filters", searchFilters);
 // Home page posts
 router.get("/homepage/posts", getHomePagePosts);
 
+// Credit
+router.get("/credit/post", getallNamepropertyPost)
 export default router;

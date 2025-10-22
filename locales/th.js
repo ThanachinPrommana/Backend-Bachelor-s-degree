@@ -25,6 +25,7 @@ export default {
             Booking: 'การจอง',
             dashboard: "หน้าหลัก",
             selectedRecords: "เลือกบันทึก",
+            
         },
         buttons: {
             save: 'บันทึก',
@@ -172,7 +173,8 @@ export default {
             finalSlipUploadDate:"วันอัปโหลดสลิป",
             bookingStatus:"สถานะการจอง",
             propertyUnit:"รหัสบ้านเลขที่",
-            dateTimeSlot:"รหัสตารางวันนัด"
+            dateTimeSlot:"รหัสตารางวันนัด",
+            rejectReason:"เหตุผลที่ปฏิเสธ",
         },
         actions: {
             list: "รายการ",
@@ -181,7 +183,7 @@ export default {
             edit: "แก้ไข",
             new: "สร้าง",
             bulkDelete: "ลบทั้งหมด",
-
+            
         }
     },
 };

@@ -19,10 +19,11 @@ enum UserType {
   Admin
 }
 
-enum FinancialReadiness {
-  Low
-  High
-}
+// UNUSED: ไม่ได้อ้างในโมเดลปัจจุบัน
+// enum FinancialReadiness {
+//   Low
+//   High
+// }
 
 enum Status_Seller {
   PENDING
@@ -55,17 +56,19 @@ enum Status_payment {
   REJECTED
 }
 
-enum NegotiationStatus {
-  PENDING
-  SUCCESS
-  FAILED
-}
+// UNUSED: ยังไม่ถูกใช้งานในโมเดล
+// enum NegotiationStatus {
+//   PENDING
+//   SUCCESS
+//   FAILED
+// }
 
-enum ContractStatus {
-  PENDING
-  SIGNED
-  REJECTED
-}
+// UNUSED: ยังไม่ถูกใช้งานในโมเดล
+// enum ContractStatus {
+//   PENDING
+//   SIGNED
+//   REJECTED
+// }
 
 enum NotificationStatus {
   UNREAD
@@ -132,7 +135,6 @@ enum BookingStatus {
 enum UnitStatus {
   AVAILABLE // ว่าง
   SOLD // ขายแล้ว
-  RENTED // เช่าแล้ว
   PENDING // กำลังดำเนินการ
 }
 
@@ -227,13 +229,18 @@ model PropertyPost {
   Bathroom      Int
   Description   String
 
-  Deposit_Amount Float? // สำหรับขาย (ดาวน์) 
-  Deposit_Rent   Float? // สำหรับเช่า (มัดจำ) //เอาออก
+  Deposit_Amount Float? // สำหรับขาย (ดาวน์)
+  // UNUSED: สำหรับเช่า (มัดจำ) — ตอนนี้แอปรองรับเฉพาะขาย
+  // Deposit_Rent   Float?
 
-  Contract_Seller        String? //เอาออก
-  LinkMap                String?
-  Latitude               Float? //เอาออก
-  Longitude              Float? //เอาออก
+  // UNUSED: ไม่ใช้แล้วในฟรอนต์
+  // Contract_Seller String?
+
+  LinkMap String?
+  // UNUSED: ไม่ใช้แล้วในฟรอนต์
+  // Latitude  Float?
+  // Longitude Float?
+
   Province               String
   District               String
   Subdistrict            String
@@ -244,15 +251,20 @@ model PropertyPost {
   Additional_Amenities   Additional_Amenities_list[] @default([])
   Parking_Space          Int?
   Sell_Rent              Sell_Rent
-  Other_related_expenses String?
-  Link_line              String?
-  Link_facbook           String?
-  Name                   String?
-  Phone                  String
-  floor                  Int?
-  NumberOfUnits          Int?                        @default(1)
-  Interest               Float?
-  Status_post            Status_post                 @default(PENDING)
+  // เปลี่ยนเป็นลิสต์ของสตริง เพื่อรองรับหลายรายการ
+  Other_related_expenses String[]                    @default([])
+
+  Link_line     String?
+  Link_facbook  String?
+  Name          String?
+  Phone         String
+  floor         Int?
+  NumberOfUnits Int?    @default(1)
+
+  // UNUSED: เอาดอกเบี้ยโดยประมาณออกจากฟรอนต์แล้ว
+  // Interest     Float?
+
+  Status_post Status_post @default(PENDING)
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String
@@ -290,6 +302,7 @@ model PropertyUnit {
   DocumentUpload DocumentUpload[]
   Booking        Booking?
   Deposit        Deposit?
+  Payment        Payment[]
 
   @@unique([propertyPostId, Unit_Number])
   @@index([propertyPostId, Status])
@@ -346,6 +359,8 @@ model Payment {
   userId         String
   PropertyPost   PropertyPost   @relation(fields: [postId], references: [id])
   postId         String
+  Unit           PropertyUnit?  @relation(fields: [unitId], references: [id])
+  unitId         String?
   PaymentType    PaymentType
   Payment_Amount Float
   Payment_Slip   String
