@@ -44,7 +44,7 @@ CREATE TYPE "public"."Status_post" AS ENUM ('PENDING', 'CONFIRMED', 'SOLD', 'HID
 CREATE TYPE "public"."BookingStatus" AS ENUM ('PENDING_PAYMENT', 'CONFIRMED', 'PENDING_FINAL_VERIFICATION', 'COMPLETED', 'CANCELLED');
 
 -- CreateEnum
-CREATE TYPE "public"."UnitStatus" AS ENUM ('AVAILABLE', 'SOLD', 'RENTED', 'PENDING');
+CREATE TYPE "public"."UnitStatus" AS ENUM ('AVAILABLE', 'SOLD', 'PENDING');
 
 -- CreateTable
 CREATE TABLE "public"."User" (
@@ -196,6 +196,7 @@ CREATE TABLE "public"."Payment" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "postId" TEXT NOT NULL,
+    "unitId" TEXT,
     "PaymentType" "public"."PaymentType" NOT NULL,
     "Payment_Amount" DOUBLE PRECISION NOT NULL,
     "Payment_Slip" TEXT NOT NULL,
@@ -447,6 +448,9 @@ ALTER TABLE "public"."Payment" ADD CONSTRAINT "Payment_userId_fkey" FOREIGN KEY 
 
 -- AddForeignKey
 ALTER TABLE "public"."Payment" ADD CONSTRAINT "Payment_postId_fkey" FOREIGN KEY ("postId") REFERENCES "public"."PropertyPost"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."Payment" ADD CONSTRAINT "Payment_unitId_fkey" FOREIGN KEY ("unitId") REFERENCES "public"."PropertyUnit"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "public"."Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
