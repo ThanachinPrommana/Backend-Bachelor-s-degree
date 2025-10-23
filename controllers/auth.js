@@ -286,7 +286,20 @@ export const getProfile = async (req, res) => {
             RealEstate_License: true,
             Status: true,
             nationalIdImage: true,
-            DateTimeSlot: true,
+            DateTimeSlot: {
+              select: {
+                id: true,
+                startTime: true,
+                endTime: true,
+                isBooked: true,
+                Post: {
+                  select: {
+                    id: true,
+                    Property_Name: true
+                  }
+                }
+              }
+            },
             Booking: {
               select: {
                 id: true,
@@ -314,7 +327,7 @@ export const getProfile = async (req, res) => {
                       select: {
                         First_name: true,
                         Last_name: true,
-                
+
 
                       }
                     }
