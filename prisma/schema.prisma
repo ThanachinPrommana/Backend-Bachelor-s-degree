@@ -106,6 +106,7 @@ enum Nearby_Facilities {
 enum Parking_Needs {
   oneCar
   twoCars
+  threePlus
   Not_required
 }
 
@@ -221,27 +222,16 @@ model Category {
 }
 
 model PropertyPost {
-  id            String @id @default(cuid())
-  Property_Name String
-  Price         Float
-  Usable_Area   Float
-  Land_Size     Float
-  Bedrooms      Int
-  Bathroom      Int
-  Description   String
-
-  Deposit_Amount Float? // สำหรับขาย (ดาวน์)
-  // UNUSED: สำหรับเช่า (มัดจำ) — ตอนนี้แอปรองรับเฉพาะขาย
-  // Deposit_Rent   Float?
-
-  // UNUSED: ไม่ใช้แล้วในฟรอนต์
-  // Contract_Seller String?
-
-  LinkMap String?
-  // UNUSED: ไม่ใช้แล้วในฟรอนต์
-  // Latitude  Float?
-  // Longitude Float?
-
+  id                     String                      @id @default(cuid())
+  Property_Name          String
+  Price                  Float
+  Usable_Area            Float
+  Land_Size              Float
+  Bedrooms               Int
+  Bathroom               Int
+  Description            String
+  Deposit_Amount         Float? // สำหรับขาย (ดาวน์)
+  LinkMap                String?
   Province               String
   District               String
   Subdistrict            String
@@ -252,7 +242,6 @@ model PropertyPost {
   Additional_Amenities   Additional_Amenities_list[] @default([])
   Parking_Space          Int?
   Sell_Rent              Sell_Rent
-  // เปลี่ยนเป็นลิสต์ของสตริง เพื่อรองรับหลายรายการ
   Other_related_expenses String[]                    @default([])
 
   Link_line     String?
@@ -261,9 +250,6 @@ model PropertyPost {
   Phone         String
   floor         Int?
   NumberOfUnits Int?    @default(1)
-
-  // UNUSED: เอาดอกเบี้ยโดยประมาณออกจากฟรอนต์แล้ว
-  // Interest     Float?
 
   Status_post Status_post @default(PENDING)
 
