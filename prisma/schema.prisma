@@ -136,7 +136,6 @@ enum BookingStatus {
 enum UnitStatus {
   AVAILABLE // ว่าง
   SOLD // ขายแล้ว
-  RENTED // เช่าแล้ว
   PENDING // กำลังดำเนินการ
 }
 
@@ -289,6 +288,7 @@ model PropertyUnit {
   DocumentUpload DocumentUpload[]
   Booking        Booking?
   Deposit        Deposit?
+  Payment        Payment[]
 
   @@unique([propertyPostId, Unit_Number])
   @@index([propertyPostId, Status])
@@ -345,6 +345,8 @@ model Payment {
   userId         String
   PropertyPost   PropertyPost   @relation(fields: [postId], references: [id])
   postId         String
+  Unit           PropertyUnit?  @relation(fields: [unitId], references: [id])
+  unitId         String?
   PaymentType    PaymentType
   Payment_Amount Float
   Payment_Slip   String
