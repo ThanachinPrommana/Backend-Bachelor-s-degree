@@ -468,6 +468,8 @@ export const getPost = async (req, res) => {
         PropertyUnit: { select: { id: true, Unit_Number: true, Status: true } },
         NumberOfUnits: true,
         Video: { select: { url: true, secure_url: true } },
+        Link_line: true,
+        Link_facbook: true,
       },
     });
 
