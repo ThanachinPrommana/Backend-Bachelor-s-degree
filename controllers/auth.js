@@ -24,13 +24,13 @@ export const preRegister = async (req, res) => {
   try {
     const { Email, Password, Phone, First_name, Last_name } = req.body;
 
-    if (!Email) return res.status(400).json({ message: "Email is required!!" });
+    if (!Email) return res.status(400).json({ message: "ไม่พบอีเมล" });
     if (!Password)
-      return res.status(400).json({ message: "Password is required!!" });
+      return res.status(400).json({ message: "รหัสผ่านไม่ถูกต้อง" });
 
     const existingUser = await prisma.user.findFirst({ where: { Email } });
     if (existingUser) {
-      return res.status(400).json({ message: "Email already exists" });
+      return res.status(400).json({ message: "คุณมีอีเมลนี้อยู่แล้ว" });
     }
 
     const hashedPassword = await bcrypt.hash(Password, 10);
@@ -51,7 +51,7 @@ export const preRegister = async (req, res) => {
     const link = `${FRONTEND_URL}/verifyemail?token=${encodedToken}`;
     console.log("token:", encodedToken)
     await verifyemail(Email, link);
-    return res.json({ message: "Verification email sent" });
+    return res.json({ message: "ยืนยันอีเมล ได้ถูกส่งไปแล้ว" });
   } catch (err) {
     console.error("preRegister error:", err);
     return res.status(500).json({ message: "Server error" });
@@ -233,7 +233,7 @@ export const forgotPassword = async (req, res) => {
     const resetLink = `${FRONTEND_URL}/resetpassword?token=${token}`;
     await sendResetEmail(Email, resetLink);
 
-    return res.json({ message: "Reset link sent to your email." });
+    return res.json({ message: "ลิงค์รีเซ็ตรหัสผ่านถูกส่งไปยังอีเมลของคุณแล้ว" });
   } catch (err) {
     console.error("forgotPassword error:", err);
     return res.status(500).json({ message: "Server Error" });
@@ -245,7 +245,7 @@ export const resetPassword = async (req, res) => {
   try {
     const { token, Password } = req.body;
     if (!token || !Password)
-      return res.status(400).json({ message: "Missing token or password" });
+      return res.status(400).json({ message: "ไม่มีโทเค็นหรือรหัสผ่าน" });
 
     const tokenEntry = await prisma.passwordResetToken.findFirst({
       where: { token },
@@ -262,7 +262,7 @@ export const resetPassword = async (req, res) => {
 
     await prisma.passwordResetToken.deleteMany({ where: { token } });
 
-    return res.json({ message: "Password updated" });
+    return res.json({ message: "รหัสผ่าน ถูกเปลี่ยนแล้ว" });
   } catch (err) {
     console.error("resetPassword error:", err);
     return res.status(500).json({ message: "Server Error" });

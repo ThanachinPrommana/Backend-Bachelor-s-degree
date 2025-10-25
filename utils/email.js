@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { getVerifyEmailHtml } from '../Sendemail/emailTemplate.js';
+import { createResetPasswordTemplate } from '../Sendemail/createResetPasswordTemplate.js';
 
 
 
@@ -13,8 +14,8 @@ export const sendResetEmail = async (to, link) => {
 });
   await transporter.sendMail({
     to,
-    subject: 'Reset Your Password',
-    html: `<p>Click the link to reset your password: <a href="${link}">Reset Password</a></p>`
+    subject: 'คำขอรีเซ็ตรหัสผ่าน (Yuu Yenn Property)',
+    html:createResetPasswordTemplate(link)
   });
 };
 
