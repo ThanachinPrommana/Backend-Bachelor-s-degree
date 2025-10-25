@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { getVerifyEmailHtml } from '../Sendemail/emailTemplate.js';
 
 
 
@@ -28,7 +29,6 @@ export const verifyemail = async (to, link) => {
   await transporter.sendMail({
     to,
     subject: "Please verify your email",
-    html: `<p>Click the link below to verify your email:</p>
-    <a href="${link}">Verify Email</a>`,
+    html:getVerifyEmailHtml(link)
   })
 }
