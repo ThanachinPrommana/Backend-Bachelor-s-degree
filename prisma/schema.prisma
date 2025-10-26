@@ -8,22 +8,317 @@ datasource db {
   directUrl = env("DATABASE_URL_MIGRATE")
 }
 
-/**
- * =====================
- * Enums
- * =====================
- */
+/// *
+///  * =====================
+///  * Models
+///  * =====================
+model User {
+  id                 String               @id @default(cuid())
+  First_name         String
+  Last_name          String
+  Email              String               @unique
+  Phone              String
+  Password           String
+  userType           UserType             @default(Buyer)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  image              String?
+  publicId           String?
+  Buyer              Buyer?
+  Deposit            Deposit[]
+  DocumentUpload     DocumentUpload[]
+  Notification       Notification[]
+  PasswordResetToken PasswordResetToken[]
+  Payment            Payment[]
+  PropertyPost       PropertyPost[]
+  Seller             Seller?
+}
+
+model Buyer {
+  id                    String                 @id @default(cuid())
+  userId                String                 @unique
+  DateofBirth           DateTime?
+  Occupation            String?
+  Monthly_Income        Float?
+  Family_Size           Int?
+  Preferred_Province    String?
+  Preferred_District    String?
+  Preferred_Subdistrict String?
+  Parking_Needs         Parking_Needs?
+  Nearby_Facilities     Nearby_Facilities?
+  Lifestyle_Preferences Lifestyle_Preferences?
+  Special_Requirements  String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  Booking               Booking[]
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Seller {
+  id                 String         @id @default(cuid())
+  userId             String         @unique
+  National_ID        String         @unique
+  Company_Name       String?
+  RealEstate_License String?        @unique
+  Status             Status_Seller  @default(PENDING)
+  StartTime          DateTime?
+  isBooked           Boolean        @default(false)
+  nationalIdImage    String?
+  publicId           String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  Booking            Booking[]
+  DateTimeSlot       DateTimeSlot[]
+  PropertyPost       PropertyPost[]
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([Status])
+}
+
+model Category {
+  id           String         @id @default(cuid())
+  name         String
+  PropertyPost PropertyPost[]
+}
+
+model PropertyPost {
+  id                     String                      @id @default(cuid())
+  Property_Name          String
+  Price                  Float
+  Usable_Area            Float
+  Land_Size              Float
+  Bedrooms               Int
+  Bathroom               Int
+  Description            String
+  Deposit_Amount         Float?
+  LinkMap                String?
+  Province               String
+  District               String
+  Subdistrict            String
+  Address                String
+  Total_Rooms            Int?
+  Year_Built             String?
+  Nearby_Landmarks       Nearby_Landmarks_list[]     @default([])
+  Additional_Amenities   Additional_Amenities_list[] @default([])
+  Parking_Space          Int?
+  Sell_Rent              Sell_Rent
+  Other_related_expenses String[]                    @default([])
+  Link_line              String?
+  Link_facbook           String?
+  Name                   String?
+  Phone                  String
+  floor                  Int?
+  NumberOfUnits          Int?                        @default(1)
+  Status_post            Status_post                 @default(PENDING)
+  userId                 String
+  sellerId               String?
+  categoryId             String?
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  Deposit_Percent        Float?
+  DateTimeSlot           DateTimeSlot[]
+  Deposit                Deposit[]
+  DocumentUpload         DocumentUpload[]
+  Image                  Image[]
+  Payment                Payment[]
+  Category               Category?                   @relation(fields: [categoryId], references: [id])
+  seller                 Seller?                     @relation(fields: [sellerId], references: [id])
+  user                   User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  PropertyUnit           PropertyUnit[]
+  Video                  Video[]
+
+  @@index([sellerId, createdAt])
+  @@index([userId, createdAt])
+  @@index([Status_post, createdAt])
+  @@index([Province, District, Subdistrict])
+}
+
+model PropertyUnit {
+  id             String           @id @default(cuid())
+  Unit_Number    String
+  Status         UnitStatus       @default(AVAILABLE)
+  propertyPostId String
+  Booking        Booking?
+  Deposit        Deposit?
+  DocumentUpload DocumentUpload[]
+  Payment        Payment[]
+  propertyPost   PropertyPost     @relation(fields: [propertyPostId], references: [id])
+
+  @@unique([propertyPostId, Unit_Number])
+  @@index([propertyPostId, Status])
+}
+
+model Deposit {
+  id             String           @id @default(cuid())
+  postId         String
+  userId         String?
+  Deposit_Status Status_Disposit
+  Deposit_Amount Float
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  propertyUnitId String           @unique
+  Post           PropertyPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  Unit           PropertyUnit     @relation(fields: [propertyUnitId], references: [id])
+  User           User?            @relation(fields: [userId], references: [id])
+  DocumentUpload DocumentUpload[]
+
+  @@index([userId, createdAt])
+  @@index([postId, Deposit_Status])
+}
+
+model DocumentUpload {
+  id                 String        @id @default(cuid())
+  DocumentName       String
+  DocumentUrl        String
+  CloudinaryPublicId String?
+  Review_Status      Status_Review
+  Rejection_Note     String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  userId             String
+  depositId          String?
+  postId             String?
+  unitId             String?
+  Deposit            Deposit?      @relation(fields: [depositId], references: [id])
+  Post               PropertyPost? @relation(fields: [postId], references: [id])
+  unit               PropertyUnit? @relation(fields: [unitId], references: [id])
+  User               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([userId])
+  @@index([unitId])
+}
+
+model Payment {
+  id             String         @id @default(cuid())
+  userId         String
+  postId         String
+  PaymentType    PaymentType
+  Payment_Amount Float
+  Payment_Slip   String
+  Status         Status_payment
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  unitId         String?
+  PropertyPost   PropertyPost   @relation(fields: [postId], references: [id])
+  Unit           PropertyUnit?  @relation(fields: [unitId], references: [id])
+  User           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([postId, Status])
+}
+
+model Notification {
+  id             String             @id @default(cuid())
+  userId         String
+  referenceId    String?
+  Title          String
+  type           String             @default("general")
+  targetUrl      String?
+  readAt         DateTime?
+  Message        String
+  Status         NotificationStatus
+  createdAt      DateTime           @default(now())
+  relatedProcess String?
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, Status])
+}
+
+model Image {
+  id             String        @id @default(cuid())
+  asset_id       String?
+  public_id      String?
+  url            String
+  secure_url     String?
+  propertyPostId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  PropertyPost   PropertyPost? @relation(fields: [propertyPostId], references: [id], onDelete: Cascade)
+
+  @@index([propertyPostId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Video {
+  id         String        @id @default(cuid())
+  asset_id   String?
+  public_id  String?
+  url        String
+  secure_url String?
+  postId     String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  post       PropertyPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+}
+
+model DateTimeSlot {
+  id        String        @id @default(cuid())
+  startTime DateTime
+  endTime   DateTime
+  isBooked  Boolean       @default(false)
+  sellerId  String
+  postId    String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  Booking   Booking?
+  Post      PropertyPost? @relation(fields: [postId], references: [id])
+  Seller    Seller        @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId, startTime])
+  @@index([postId, startTime])
+  @@index([isBooked])
+}
+
+model Booking {
+  id                  String        @id @default(cuid())
+  buyerId             String
+  sellerId            String
+  dateTimeSlotId      String        @unique
+  isReminderSent      Boolean       @default(false)
+  isDayOfAlertSent    Boolean       @default(false)
+  isAtTimeAlertSent   Boolean       @default(false)
+  finalSlipUrl        String?
+  finalSlipUploadDate DateTime?
+  bookingStatus       BookingStatus @default(CONFIRMED)
+  propertyUnitId      String?       @unique
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  Buyer               Buyer         @relation(fields: [buyerId], references: [id])
+  dateTimeSlot        DateTimeSlot  @relation(fields: [dateTimeSlotId], references: [id])
+  propertyUnit        PropertyUnit? @relation(fields: [propertyUnitId], references: [id])
+  Seller              Seller        @relation(fields: [sellerId], references: [id])
+
+  @@index([buyerId, createdAt])
+  @@index([sellerId, createdAt])
+  @@index([bookingStatus, createdAt])
+}
+
+/// *
+///  * =====================
+///  * Enums
+///  * =====================
 enum UserType {
   Buyer
   Seller
   Admin
 }
-
-// UNUSED: ไม่ได้อ้างในโมเดลปัจจุบัน
-// enum FinancialReadiness {
-//   Low
-//   High
-// }
 
 enum Status_Seller {
   PENDING
@@ -55,10 +350,6 @@ enum Status_payment {
   CONFIRMED
   REJECTED
 }
-
-// UNUSED
-// enum NegotiationStatus { PENDING SUCCESS FAILED }
-// enum ContractStatus   { PENDING SIGNED  REJECTED }
 
 enum NotificationStatus {
   UNREAD
@@ -124,338 +415,7 @@ enum BookingStatus {
 }
 
 enum UnitStatus {
-<<<<<<< HEAD
-  AVAILABLE // ว่าง
-  SOLD // ขายแล้ว
-  PENDING // กำลังดำเนินการ
-=======
   AVAILABLE
   SOLD
   PENDING
->>>>>>> origin/Second
-}
-
-/**
- * =====================
- * Models
- * =====================
- */
-model User {
-  id         String   @id @default(cuid())
-  First_name String
-  Last_name  String
-  Email      String   @unique
-  Phone      String
-  Password   String
-  userType   UserType @default(Buyer)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  Buyer              Buyer?
-  Seller             Seller?
-  PropertyPost       PropertyPost[]
-  Payment            Payment[]
-  Notification       Notification[]
-  PasswordResetToken PasswordResetToken[]
-  image              String?
-  publicId           String?
-  Deposit            Deposit[]
-  DocumentUpload     DocumentUpload[]
-}
-
-model Buyer {
-  id                    String                 @id @default(cuid())
-  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId                String                 @unique
-  DateofBirth           DateTime?
-  Occupation            String?
-  Monthly_Income        Float?
-  Family_Size           Int?
-  Preferred_Province    String?
-  Preferred_District    String?
-  Preferred_Subdistrict String?
-  Parking_Needs         Parking_Needs?
-  Nearby_Facilities     Nearby_Facilities?
-  Lifestyle_Preferences Lifestyle_Preferences?
-  Special_Requirements  String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-
-  Booking Booking[]
-
-  @@index([userId])
-}
-
-model Seller {
-  id                 String        @id @default(cuid())
-  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId             String        @unique
-  National_ID        String        @unique
-  Company_Name       String?
-  RealEstate_License String?       @unique
-  Status             Status_Seller @default(PENDING)
-  StartTime          DateTime?
-  isBooked           Boolean       @default(false)
-  nationalIdImage    String?
-  publicId           String?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-
-  DateTimeSlot DateTimeSlot[]
-  Booking      Booking[]
-  PropertyPost PropertyPost[]
-
-  @@index([userId])
-  @@index([Status])
-}
-
-model Category {
-  id           String         @id @default(cuid())
-  name         String
-  PropertyPost PropertyPost[]
-}
-
-model PropertyPost {
-  id                     String                      @id @default(cuid())
-  Property_Name          String
-  Price                  Float
-  Usable_Area            Float
-  Land_Size              Float
-  Bedrooms               Int
-  Bathroom               Int
-  Description            String
-  Deposit_Amount         Float? // สำหรับขาย (จำนวนเงินดาวน์)
-  Deposit_Percent        Float? // สำหรับขาย (เปอร์เซ็นต์ดาวน์ 0-100)
-  LinkMap                String?
-  Province               String
-  District               String
-  Subdistrict            String
-  Address                String
-  Total_Rooms            Int?
-  Year_Built             String?
-  Nearby_Landmarks       Nearby_Landmarks_list[]     @default([])
-  Additional_Amenities   Additional_Amenities_list[] @default([])
-  Parking_Space          Int?
-  Sell_Rent              Sell_Rent
-  Other_related_expenses String[]                    @default([])
-
-  Link_line     String?
-  Link_facbook  String?
-  Name          String?
-  Phone         String
-  floor         Int?
-  NumberOfUnits Int?    @default(1)
-
-  Status_post Status_post @default(PENDING)
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
-
-  seller   Seller? @relation(fields: [sellerId], references: [id])
-  sellerId String?
-
-  Category   Category? @relation(fields: [categoryId], references: [id])
-  categoryId String?
-
-  Deposit   Deposit[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  Payment        Payment[]
-  Image          Image[]
-  DocumentUpload DocumentUpload[]
-  Video          Video[]
-  DateTimeSlot   DateTimeSlot[]
-  PropertyUnit   PropertyUnit[]
-
-  @@index([sellerId, createdAt])
-  @@index([userId, createdAt])
-  @@index([Status_post, createdAt])
-  @@index([Province, District, Subdistrict])
-}
-
-model PropertyUnit {
-  id             String       @id @default(cuid())
-  Unit_Number    String
-  Status         UnitStatus   @default(AVAILABLE)
-  propertyPost   PropertyPost @relation(fields: [propertyPostId], references: [id])
-  propertyPostId String
-
-  DocumentUpload DocumentUpload[]
-  Booking        Booking?
-  Deposit        Deposit?
-  Payment        Payment[]
-
-  @@unique([propertyPostId, Unit_Number])
-  @@index([propertyPostId, Status])
-}
-
-model Deposit {
-  id             String           @id @default(cuid())
-  Post           PropertyPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  postId         String
-  User           User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userId         String?
-  Deposit_Status Status_Disposit
-  Deposit_Amount Float
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  Unit           PropertyUnit     @relation(fields: [propertyUnitId], references: [id])
-  propertyUnitId String           @unique
-  DocumentUpload DocumentUpload[]
-
-  @@index([userId, createdAt])
-  @@index([postId, Deposit_Status])
-}
-
-model DocumentUpload {
-  id                 String        @id @default(cuid())
-  DocumentName       String
-  DocumentUrl        String
-  CloudinaryPublicId String?
-  Review_Status      Status_Review
-  Rejection_Note     String?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
-
-  Deposit   Deposit? @relation(fields: [depositId], references: [id])
-  depositId String?
-
-  Post   PropertyPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
-  postId String?
-
-  unitId String?
-  unit   PropertyUnit? @relation(fields: [unitId], references: [id], onDelete: SetNull)
-
-  @@index([postId])
-  @@index([userId])
-  @@index([unitId])
-}
-
-model Payment {
-  id             String         @id @default(cuid())
-  User           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId         String
-  PropertyPost   PropertyPost   @relation(fields: [postId], references: [id])
-  postId         String
-  Unit           PropertyUnit?  @relation(fields: [unitId], references: [id])
-  unitId         String?
-  PaymentType    PaymentType
-  Payment_Amount Float
-  Payment_Slip   String
-  Status         Status_payment
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-
-  @@index([userId, createdAt])
-  @@index([postId, Status])
-}
-
-model Notification {
-  id             String             @id @default(cuid())
-  userId         String
-  referenceId    String?
-  Title          String
-  type           String             @default("general")
-  targetUrl      String?
-  readAt         DateTime?
-  Message        String
-  Status         NotificationStatus
-  createdAt      DateTime           @default(now())
-  relatedProcess String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([userId, Status])
-}
-
-model Image {
-  id         String  @id @default(cuid())
-  asset_id   String?
-  public_id  String?
-  url        String
-  secure_url String?
-
-  PropertyPost   PropertyPost? @relation(fields: [propertyPostId], references: [id], onDelete: Cascade)
-  propertyPostId String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-
-  @@index([propertyPostId])
-}
-
-model PasswordResetToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  @@index([userId, expiresAt])
-}
-
-model Video {
-  id         String  @id @default(cuid())
-  asset_id   String?
-  public_id  String?
-  url        String
-  secure_url String?
-
-  post      PropertyPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
-  postId    String?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-
-  @@index([postId])
-}
-
-model DateTimeSlot {
-  id        String   @id @default(cuid())
-  startTime DateTime
-  endTime   DateTime
-  isBooked  Boolean  @default(false)
-
-  Seller   Seller @relation(fields: [sellerId], references: [id])
-  sellerId String
-
-  Post   PropertyPost? @relation(fields: [postId], references: [id])
-  postId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  Booking Booking?
-
-  @@index([sellerId, startTime])
-  @@index([postId, startTime])
-  @@index([isBooked])
-}
-
-model Booking {
-  id                  String        @id @default(cuid())
-  Buyer               Buyer         @relation(fields: [buyerId], references: [id])
-  buyerId             String
-  Seller              Seller        @relation(fields: [sellerId], references: [id])
-  sellerId            String
-  dateTimeSlot        DateTimeSlot  @relation(fields: [dateTimeSlotId], references: [id])
-  dateTimeSlotId      String        @unique
-  isReminderSent      Boolean       @default(false)
-  isDayOfAlertSent    Boolean       @default(false)
-  isAtTimeAlertSent   Boolean       @default(false)
-  finalSlipUrl        String?
-  finalSlipUploadDate DateTime?
-  bookingStatus       BookingStatus @default(CONFIRMED)
-  propertyUnit        PropertyUnit? @relation(fields: [propertyUnitId], references: [id])
-  propertyUnitId      String?       @unique
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-
-  @@index([buyerId, createdAt])
-  @@index([sellerId, createdAt])
-  @@index([bookingStatus, createdAt])
 }
