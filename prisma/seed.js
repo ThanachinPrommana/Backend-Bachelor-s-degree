@@ -1,7 +1,5 @@
-
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
-
 
 const categories = [
   { id: "cmegzfdya0006w2bwq5d8alc7", name: "condo" },
@@ -11,7 +9,7 @@ const categories = [
 ];
 
 async function main() {
-  console.log('Start seeding categories...');
+  console.log("Start seeding categories...");
   for (const category of categories) {
     await prisma.category.upsert({
       where: { id: category.id },
@@ -19,7 +17,7 @@ async function main() {
       create: category,
     });
   }
-  console.log('Seeding finished.');
+  console.log("Seeding finished.");
 }
 
 main()

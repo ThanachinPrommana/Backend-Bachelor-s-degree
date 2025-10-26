@@ -56,19 +56,9 @@ enum Status_payment {
   REJECTED
 }
 
-// UNUSED: ยังไม่ถูกใช้งานในโมเดล
-// enum NegotiationStatus {
-//   PENDING
-//   SUCCESS
-//   FAILED
-// }
-
-// UNUSED: ยังไม่ถูกใช้งานในโมเดล
-// enum ContractStatus {
-//   PENDING
-//   SIGNED
-//   REJECTED
-// }
+// UNUSED
+// enum NegotiationStatus { PENDING SUCCESS FAILED }
+// enum ContractStatus   { PENDING SIGNED  REJECTED }
 
 enum NotificationStatus {
   UNREAD
@@ -118,25 +108,31 @@ enum Lifestyle_Preferences {
 }
 
 enum Status_post {
-  PENDING // รอแอดมินอนุมัติ (สถานะเริ่มต้น)
-  CONFIRMED // อนุมัติแล้ว (เทียบกับ AVAILABLE)
-  SOLD // ขายไปแล้ว
-  HIDDEN // ผู้ขายซ่อนไว้ชั่วคราว
-  REJECTED // แอดมินไม่อนุมัติ
+  PENDING
+  CONFIRMED
+  SOLD
+  HIDDEN
+  REJECTED
 }
 
 enum BookingStatus {
-  PENDING_PAYMENT // รอจ่ายมัดจำ (ขั้นแรก)
-  CONFIRMED // จ่ายมัดจำแล้ว
-  PENDING_FINAL_VERIFICATION // รอสรุปยอดสุดท้าย
-  COMPLETED // เสร็จสมบูรณ์
+  PENDING_PAYMENT
+  CONFIRMED
+  PENDING_FINAL_VERIFICATION
+  COMPLETED
   CANCELLED
 }
 
 enum UnitStatus {
+<<<<<<< HEAD
   AVAILABLE // ว่าง
   SOLD // ขายแล้ว
   PENDING // กำลังดำเนินการ
+=======
+  AVAILABLE
+  SOLD
+  PENDING
+>>>>>>> origin/Second
 }
 
 /**
@@ -144,7 +140,6 @@ enum UnitStatus {
  * Models
  * =====================
  */
-
 model User {
   id         String   @id @default(cuid())
   First_name String
@@ -229,7 +224,8 @@ model PropertyPost {
   Bedrooms               Int
   Bathroom               Int
   Description            String
-  Deposit_Amount         Float? // สำหรับขาย (ดาวน์)
+  Deposit_Amount         Float? // สำหรับขาย (จำนวนเงินดาวน์)
+  Deposit_Percent        Float? // สำหรับขาย (เปอร์เซ็นต์ดาวน์ 0-100)
   LinkMap                String?
   Province               String
   District               String
