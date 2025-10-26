@@ -116,6 +116,7 @@ export const createpost = async (req, res) => {
       Bedrooms,
       Description,
       Deposit_Amount,
+      Deposit_Percent, // <— เพิ่มอ่านเปอร์เซ็นต์
       LinkMap,
       Province,
       District,
@@ -128,7 +129,7 @@ export const createpost = async (req, res) => {
       Parking_Space,
       Sell_Rent,
       Link_line,
-      Link_facbook, // schema ใช้ชื่อ Link_facbook
+      Link_facbook,
       Name,
       Phone,
       Bathroom,
@@ -139,7 +140,23 @@ export const createpost = async (req, res) => {
     } = req.body;
 
     const isSale = String(Sell_Rent || "").toUpperCase() === "SALE";
-    if (isSale && (!Deposit_Amount || Number(Deposit_Amount) <= 0)) {
+
+    // เตรียมเลข
+    const priceNum = toFloatOrNull(Price);
+    const percentNumRaw = toFloatOrNull(Deposit_Percent);
+    const percentNum =
+      percentNumRaw == null ? null : Math.max(0, Math.min(100, percentNumRaw));
+    let depositAmountNum = toFloatOrNull(Deposit_Amount);
+
+    // ถ้า SALE และไม่ได้ส่งจำนวนเงิน แต่มีเปอร์เซ็นต์+ราคา → คำนวณเงินดาวน์
+    if (isSale && (depositAmountNum == null || depositAmountNum <= 0)) {
+      if (percentNum != null && priceNum != null && priceNum > 0) {
+        depositAmountNum =
+          Math.round(priceNum * (percentNum / 100) * 100) / 100;
+      }
+    }
+    // บังคับมีเงินดาวน์ (จำนวน) เมื่อ SALE
+    if (isSale && (!depositAmountNum || depositAmountNum <= 0)) {
       return res
         .status(400)
         .json({ message: "กรุณาระบุเงินดาวน์สำหรับการขาย" });
@@ -193,9 +210,10 @@ export const createpost = async (req, res) => {
         ALLOWED_AMENITIES
       ),
 
-      Deposit_Amount: toFloatOrNull(Deposit_Amount),
+      Deposit_Amount: depositAmountNum, // <— ใช้ค่าที่คำนวณแล้ว
+      Deposit_Percent: percentNum, // <— เก็บเปอร์เซ็นต์ไว้ด้วย
       LinkMap: LinkMap || null,
-      Price: toFloatOrNull(Price) ?? 0,
+      Price: priceNum ?? 0,
       Parking_Space: toIntOrNull(Parking_Space),
       Sell_Rent,
       Link_line: Link_line || null,
@@ -242,6 +260,8 @@ export const createpost = async (req, res) => {
       videosToCreate: videoData.length,
       hasUnits: Boolean(parsedPropertyUnits?.length),
       NumberOfUnits: createData.NumberOfUnits,
+      Deposit_Percent: createData.Deposit_Percent,
+      Deposit_Amount: createData.Deposit_Amount,
     });
 
     // CREATE
@@ -263,7 +283,7 @@ export const createpost = async (req, res) => {
             data: newPost.PropertyUnit.map((unit) => ({
               propertyUnitId: unit.id,
               postId: newPost.id,
-              Deposit_Amount: toFloatOrNull(Deposit_Amount),
+              Deposit_Amount: depositAmountNum,
               Deposit_Status: "PENDING",
             })),
           });
@@ -271,7 +291,7 @@ export const createpost = async (req, res) => {
           await prisma.deposit.create({
             data: {
               postId: newPost.id,
-              Deposit_Amount: toFloatOrNull(Deposit_Amount),
+              Deposit_Amount: depositAmountNum,
               Deposit_Status: "PENDING",
             },
           });
@@ -454,11 +474,16 @@ export const getPost = async (req, res) => {
         Bathroom: true,
         Description: true,
         Deposit_Amount: true,
+        Deposit_Percent: true,
         LinkMap: true,
         Price: true,
         Additional_Amenities: true,
         Parking_Space: true,
         Sell_Rent: true,
+        Name: true,
+        Link_line: true,
+        Link_facbook: true,
+
         user: { select: { First_name: true, Last_name: true, image: true } },
         seller: { select: { Status: true } },
         Phone: true,
@@ -552,6 +577,7 @@ export const updatePost = async (req, res) => {
       "Bedrooms",
       "Description",
       "Deposit_Amount",
+      "Deposit_Percent", // <— allow update
       "LinkMap",
       "Province",
       "District",
@@ -580,7 +606,13 @@ export const updatePost = async (req, res) => {
       "Parking_Space",
       "floor",
     ];
-    const asFloat = ["Usable_Area", "Land_Size", "Deposit_Amount", "Price"];
+    const asFloat = [
+      "Usable_Area",
+      "Land_Size",
+      "Deposit_Amount",
+      "Deposit_Percent", // <— numeric float 0-100
+      "Price",
+    ];
 
     const dataToUpdate = {};
     for (const [k, v] of Object.entries(req.body || {})) {
@@ -598,12 +630,31 @@ export const updatePost = async (req, res) => {
         continue;
       }
 
+      // รองรับ Other_related_expenses เป็น JSON string หรือ array
+      if (k === "Other_related_expenses") {
+        let arr = v;
+        if (typeof v === "string") {
+          try {
+            arr = JSON.parse(v);
+          } catch {
+            // fallback: เก็บเป็น array เดี่ยว
+            arr = [v];
+          }
+        }
+        dataToUpdate[k] = Array.isArray(arr) ? arr.map(String) : [];
+        continue;
+      }
+
       if (asInt.includes(k)) {
         dataToUpdate[k] = toIntOrNull(v);
         continue;
       }
       if (asFloat.includes(k)) {
-        dataToUpdate[k] = toFloatOrNull(v);
+        let num = toFloatOrNull(v);
+        if (k === "Deposit_Percent" && num != null) {
+          num = Math.max(0, Math.min(100, num)); // clamp 0-100
+        }
+        dataToUpdate[k] = num;
         continue;
       }
       if (k === "Nearby_Landmarks") {
@@ -620,6 +671,21 @@ export const updatePost = async (req, res) => {
       }
 
       dataToUpdate[k] = v;
+    }
+
+    // === อัปเดตความสัมพันธ์ของ Deposit_Amount เมื่อมี Deposit_Percent แต่ไม่ได้ส่ง Deposit_Amount มาด้วย ===
+    if (
+      Object.prototype.hasOwnProperty.call(dataToUpdate, "Deposit_Percent") &&
+      !Object.prototype.hasOwnProperty.call(dataToUpdate, "Deposit_Amount")
+    ) {
+      const percent = dataToUpdate.Deposit_Percent; // อาจเป็น null
+      const priceIncoming = dataToUpdate.Price; // ราคาใหม่ใน payload (ถ้ามี)
+      const priceExisting = existingPost.Price; // ราคาของเดิม
+      const price = priceIncoming != null ? priceIncoming : priceExisting;
+      if (percent != null && price != null && price > 0) {
+        const amount = Math.round(price * (percent / 100) * 100) / 100;
+        dataToUpdate.Deposit_Amount = amount;
+      }
     }
 
     // 1) อัปเดตฟิลด์พื้นฐาน
