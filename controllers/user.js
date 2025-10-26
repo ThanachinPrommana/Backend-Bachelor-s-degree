@@ -1308,6 +1308,7 @@ export const removeBooking = async (req, res) => {
     });
     if (!booking) return res.status(404).json({ message: "ไม่พบข้อมูลการจอง" });
 
+    const unitIdToUpdate = booking.propertyUnitId;
     const isBuyer = booking.Buyer.userId === userId;
     const isSeller = booking.Seller.userId === userId;
     if (!isBuyer && !isSeller)
@@ -1320,6 +1321,19 @@ export const removeBooking = async (req, res) => {
         where: { id: booking.dateTimeSlot.id },
         data: { isBooked: false },
       });
+
+      if (unitIdToUpdate && booking.bookingStatus !== 'COMPLETED') { // <-- Added condition here
+        await tx.documentUpload.updateMany({
+          where: {
+            userId: userId, // Document owner (the one deleting)
+            unitId: unitIdToUpdate, // Related to this booking's unit
+          },
+          data: {
+            Review_Status: "APPROVED", // Set back to APPROVED
+          },
+        });
+      }
+
       const result = await tx.booking.delete({ where: { id: bookingId } });
 
       let notificationRecipientId;
