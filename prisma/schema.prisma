@@ -145,7 +145,7 @@ model PropertyUnit {
   Deposit        Deposit?
   DocumentUpload DocumentUpload[]
   Payment        Payment[]
-  propertyPost   PropertyPost     @relation(fields: [propertyPostId], references: [id])
+  propertyPost   PropertyPost     @relation(fields: [propertyPostId], references: [id], onDelete: Cascade)
 
   @@unique([propertyPostId, Unit_Number])
   @@index([propertyPostId, Status])
@@ -161,7 +161,7 @@ model Deposit {
   updatedAt      DateTime         @updatedAt
   propertyUnitId String           @unique
   Post           PropertyPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  Unit           PropertyUnit     @relation(fields: [propertyUnitId], references: [id])
+  Unit           PropertyUnit     @relation(fields: [propertyUnitId], references: [id], onDelete: Cascade)
   User           User?            @relation(fields: [userId], references: [id])
   DocumentUpload DocumentUpload[]
 
@@ -184,7 +184,7 @@ model DocumentUpload {
   unitId             String?
   Deposit            Deposit?      @relation(fields: [depositId], references: [id])
   Post               PropertyPost? @relation(fields: [postId], references: [id])
-  unit               PropertyUnit? @relation(fields: [unitId], references: [id])
+  unit               PropertyUnit? @relation(fields: [unitId], references: [id], onDelete: SetNull)
   User               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([postId])
@@ -203,8 +203,8 @@ model Payment {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   unitId         String?
-  PropertyPost   PropertyPost   @relation(fields: [postId], references: [id])
-  Unit           PropertyUnit?  @relation(fields: [unitId], references: [id])
+  PropertyPost   PropertyPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  Unit           PropertyUnit?  @relation(fields: [unitId], references: [id], onDelete: SetNull)
   User           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
@@ -278,7 +278,7 @@ model DateTimeSlot {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   Booking   Booking?
-  Post      PropertyPost? @relation(fields: [postId], references: [id])
+  Post      PropertyPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
   Seller    Seller        @relation(fields: [sellerId], references: [id])
 
   @@index([sellerId, startTime])
@@ -302,7 +302,7 @@ model Booking {
   updatedAt           DateTime      @updatedAt
   Buyer               Buyer         @relation(fields: [buyerId], references: [id])
   dateTimeSlot        DateTimeSlot  @relation(fields: [dateTimeSlotId], references: [id])
-  propertyUnit        PropertyUnit? @relation(fields: [propertyUnitId], references: [id])
+  propertyUnit        PropertyUnit? @relation(fields: [propertyUnitId], references: [id], onDelete: Cascade)
   Seller              Seller        @relation(fields: [sellerId], references: [id])
 
   @@index([buyerId, createdAt])

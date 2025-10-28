@@ -23,7 +23,7 @@ export const propertyPostResource = {
         showProperties: [
             "Property_Name", "Description", "Price", "Usable_Area", "Land_Size",
             "Bedrooms", "Bathroom", "floor", "NumberOfUnits", "Parking_Space",
-            "Total_Rooms", "Year_Built", 
+            "Total_Rooms", "Year_Built",
             "Other_related_expenses", "Sell_Rent", "Deposit_Amount", "Province",
             "District", "Subdistrict", "Address", "LinkMap", "Link_line",
             "Link_facbook", "Name", "Phone", "Status_post",
@@ -51,29 +51,60 @@ export const propertyPostResource = {
                 after: async (response, request, context) => {
                     try {
                         const original = context._originalPropertyPost;
-                        const updated = response.record?.params;
-                        if (!updated || !original) return response;
+                        // เราใช้ response.record?.params เหมือนเดิมได้
+                        const updatedParams = response.record?.params;
+
+                        if (!updatedParams || !original) {
+                            return response;
+                        }
 
                         const oldStatus = original.Status_post;
-                        const newStatus = updated.Status_post;
+                        const newStatus = updatedParams.Status_post;
+                        const referenceId = updatedParams.id || original.id;
 
                         if (oldStatus !== newStatus) {
-                            const userId = updated.userId || original.userId;
-                            const referenceId = updated.id || original.id;
-                            const propertyName = updated.Property_Name || original.Property_Name;
+                            const userId = updatedParams.userId || original.userId;
+                            const propertyName = updatedParams.Property_Name || original.Property_Name;
 
                             if (newStatus === 'REJECTED') {
                                 const reason = request.payload.rejectReason || "โพสต์ถูกปฏิเสธโดยผู้ดูแลระบบ";
+
+                                // 1. Notification
                                 await prisma.notification.create({
                                     data: {
                                         userId, referenceId,
-                                        Title: "โพสต์ของคุณถูกปฏิเสธ",
-                                        Message: `โพสต์ "${propertyName}" ถูกปฏิเสธ: ${reason}`,
-                                        type: "post", targetUrl: `/properties/${referenceId}`,
-                                        Status: "UNREAD", relatedProcess: "post_reject",
+                                        Title: "โพสต์ของคุณถูกปฏิเสธและลบ",
+                                        Message: `โพสต์ "${propertyName}" ถูกปฏิเสธและถูกลบออกจากระบบ: ${reason}`,
+                                        type: "post", targetUrl: '/my-posts',
+                                        Status: "UNREAD", relatedProcess: "post_reject_delete",
                                     },
                                 });
+
+                                try {
+                                    await prisma.propertyPost.delete({
+                                        where: { id: referenceId }
+                                    });
+
+                                    // 3. Modify response ON SUCCESS (เหมือนเดิม)
+                                    response.notice = {
+                                        message: 'ปฏิเสธและลบโพสต์ เรียบร้อยแล้ว',
+                                        type: 'success'
+                                    };
+                                    response.redirectUrl = context.h.resourceUrl({
+                                        resourceId: context.resource.id()
+                                    });
+
+                                } catch (deleteError) {
+                                    // 4. Modify response ON FAIL (เหมือนเดิม)
+                                    console.error("Failed to delete post (cascade):", deleteError);
+                                    response.notice = {
+                                        message: `ลบโพสต์ล้มเหลว: ${deleteError.message}`,
+                                        type: 'error'
+                                    };
+                                }
+
                             } else if (newStatus === 'CONFIRMED') {
+                                // ... (Logic การอนุมัติของคุณเหมือนเดิม) ...
                                 await prisma.notification.create({
                                     data: {
                                         userId, referenceId,
@@ -86,8 +117,14 @@ export const propertyPostResource = {
                             }
                         }
                     } catch (err) {
-                        console.error("edit.after error (create notification):", err);
+                        console.error("edit.after error (outer):", err);
+                        response.notice = {
+                            message: `เกิดข้อผิดพลาด: ${err.message}`,
+                            type: 'error'
+                        };
                     }
+
+                    // คืนค่า response ที่ถูกแก้ไข (หรือไม่ได้แก้ไข)
                     return response;
                 },
             },
@@ -178,10 +215,10 @@ export const propertyPostResource = {
                     { value: 'SOLD', label: 'ขายแล้ว' },
                     { value: 'HIDDEN', label: 'ซ่อน' },
                     { value: 'REJECTED', label: 'ปฏิเสธ' },
-                    
+
                 ],
             },
-            Sell_Rent:{
+            Sell_Rent: {
                 label: "ขาย",
                 availableValues: [
                     { value: 'SELL', label: 'ขาย' },
