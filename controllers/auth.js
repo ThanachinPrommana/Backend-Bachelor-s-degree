@@ -602,7 +602,7 @@ export const registerSeller = async (req, res) => {
 
     const userId = getSessionUserId(req);
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized. Please log in." });
+      return res.status(401).json({ message: "ไม่ได้รับอนุญาต กรุณาเข้าสู่ระบบ" });
     }
 
     const { National_ID, Company_Name, RealEstate_License } = req.body;
@@ -617,7 +617,7 @@ export const registerSeller = async (req, res) => {
           OR: [{ National_ID }, { RealEstate_License }, { userId }],
         },
       });
-      if (existingSeller) throw new Error("Seller already registered");
+      if (existingSeller) throw new Error("ผู้ขายได้ลงทะเบียนแล้ว");
 
       const newSeller = await tx.seller.create({
         data: {
@@ -650,7 +650,7 @@ export const registerSeller = async (req, res) => {
 
     return res.status(201).json({
       message:
-        "Seller registration successful! Your application is pending review.",
+        "การลงทะเบียนผู้ขายสำเร็จ! ใบสมัครของคุณอยู่ระหว่างการพิจารณา",
       seller: result,
     });
   } catch (err) {

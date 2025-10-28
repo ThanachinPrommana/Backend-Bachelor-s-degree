@@ -13,10 +13,9 @@ export const propertyPostResource = {
             'Property_Name', 'Price', 'Usable_Area', 'Land_Size',
             'Bedrooms', 'Bathroom', 'Description', 'Deposit_Amount',
             'LinkMap', 'Province', 'District', 'Subdistrict', 'Address',
-            'Total_Rooms', 'Year_Built', 'Nearby_Landmarks',
-            'Additional_Amenities', 'Parking_Space', 'Sell_Rent',
+            'Total_Rooms', 'Year_Built', 'Parking_Space', 'Sell_Rent',
             'Other_related_expenses', 'Link_line', 'Link_facbook',
-            'Name', 'Phone', 'floor', 'NumberOfUnits', 'Interest',
+            'Name', 'Phone', 'floor', 'NumberOfUnits',
             'Status_post', 'createdAt', 'updatedAt',
             'Category', 'user'
         ],
@@ -24,10 +23,10 @@ export const propertyPostResource = {
         showProperties: [
             "Property_Name", "Description", "Price", "Usable_Area", "Land_Size",
             "Bedrooms", "Bathroom", "floor", "NumberOfUnits", "Parking_Space",
-            "Total_Rooms", "Year_Built", "Nearby_Landmarks", "Additional_Amenities",
+            "Total_Rooms", "Year_Built", 
             "Other_related_expenses", "Sell_Rent", "Deposit_Amount", "Province",
             "District", "Subdistrict", "Address", "LinkMap", "Link_line",
-            "Link_facbook", "Name", "Phone", "Interest", "Status_post",
+            "Link_facbook", "Name", "Phone", "Status_post",
             "Category.name", "PropertyUnit", "Image", "Video",
             "DocumentUpload", "createdAt", "updatedAt",
         ],
@@ -165,9 +164,7 @@ export const propertyPostResource = {
             Link_facbook: { label: "ลิงก์ Facebook" },
             Name: { label: "ชื่อผู้โพสต์" },
             Phone: { label: "เบอร์โทร" },
-            Sell_Rent: { label: "ประเภทการขาย/เช่า" },
-            Deposit_Amount: { label: "เงินดาวน์ / มัดจำ" },
-            Interest: { label: "ดอกเบี้ย" },
+            Deposit_Amount: { label: "เงินมัดจำ" },
             Category: { label: "หมวดหมู่" },
             createdAt: { label: "วันที่สร้าง" },
             updatedAt: { label: "แก้ไขล่าสุด" },
@@ -181,9 +178,16 @@ export const propertyPostResource = {
                     { value: 'SOLD', label: 'ขายแล้ว' },
                     { value: 'HIDDEN', label: 'ซ่อน' },
                     { value: 'REJECTED', label: 'ปฏิเสธ' },
+                    
                 ],
             },
-
+            Sell_Rent:{
+                label: "ขาย",
+                availableValues: [
+                    { value: 'SELL', label: 'ขาย' },
+                    { value: 'RENT', label: 'เช่า' },
+                ]
+            },
             rejectReason: {
                 label: 'เหตุผลการปฏิเสธ (กรอกเฉพาะเมื่อเปลี่ยนสถานะเป็น REJECTED)',
                 type: 'textarea',

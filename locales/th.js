@@ -25,7 +25,7 @@ export default {
             Booking: 'การจอง',
             dashboard: "หน้าหลัก",
             selectedRecords: "เลือกบันทึก",
-            
+
         },
         buttons: {
             save: 'บันทึก',
@@ -70,7 +70,11 @@ export default {
             community_subtitle: "คำบรรยายชุมชน",
             foundBug_title: "พบชื่อข้อผิดพลาด",
             foundBug_subtitle: "พบข้อบกพร่องคำบรรยาย",
-            noRecords:"ว่างเปล่า"
+            noRecords: "ว่างเปล่า",
+            successfullyBulkDeleted: "ลบออกจำนวนมากสำเร็จแล้ว",
+            successfullyBulkDeleted_plural: "ลบออกตามจำนวนสำเร็จแล้ว",
+            successfullyDeleted: "ลบสำเร็จ",
+            successfullyUpdated: "แก้ไขสำเร็จ",
 
         },
         properties: {
@@ -161,20 +165,28 @@ export default {
             public_id: "ชื่อไฟล์เรียกผ่าน API",
             secure_url: "ไฟล์ที่แสดงในเว็บ",
             url: "ไฟล์ไม่ปลอดภัย",
-            startTime:"เวลาที่เริ่ม",
-            endTime:"เวลาสิ้นสุด",
-            isBooked:"ถูกจองแล้วหรือยัง",
-            Seller:"รหัสผู้ขาย",
-            Buyer:"รหัสผู้ซื้อ",
-            isReminderSent:"ส่งการแจ้งเตือน",
-            isDayOfAlertSent:"ส่งการแจ้งเตือนวัน",
-            isAtTimeAlertSent:"ส่งการแจ้งเตื่อนเวลา",
-            finalSlipUrl:"สลิปการชำระเงินที่ได้จากธนาคาร",
-            finalSlipUploadDate:"วันอัปโหลดสลิป",
-            bookingStatus:"สถานะการจอง",
-            propertyUnit:"รหัสบ้านเลขที่",
-            dateTimeSlot:"รหัสตารางวันนัด",
-            rejectReason:"เหตุผลที่ปฏิเสธ",
+            startTime: "เวลาที่เริ่ม",
+            endTime: "เวลาสิ้นสุด",
+            isBooked: "ถูกจองแล้วหรือยัง",
+            Seller: "รหัสผู้ขาย",
+            Buyer: "รหัสผู้ซื้อ",
+            isReminderSent: "ส่งการแจ้งเตือน",
+            isDayOfAlertSent: "ส่งการแจ้งเตือนวัน",
+            isAtTimeAlertSent: "ส่งการแจ้งเตื่อนเวลา",
+            finalSlipUrl: "สลิปการชำระเงินที่ได้จากธนาคาร",
+            finalSlipUploadDate: "วันอัปโหลดสลิป",
+            bookingStatus: "สถานะการจอง",
+            propertyUnit: "รหัสบ้านเลขที่",
+            dateTimeSlot: "รหัสตารางวันนัด",
+            rejectReason: "เหตุผลที่ปฏิเสธ",
+            Deposit_Percent:"เปอร์เซ็นต์มัดจำ",
+            Address:"ที่อยู่รายละเอียด",
+            Price:"ราคาขาย",
+            SALE:"ขาย",
+            RENT:"เช่า",
+            Unit:"บ้านเลขที่",
+            startTime:"เวลาเริ่มต้น",
+            StartTime:"เวลาเริ่มต้น",
         },
         actions: {
             list: "รายการ",
@@ -183,7 +195,7 @@ export default {
             edit: "แก้ไข",
             new: "สร้าง",
             bulkDelete: "ลบทั้งหมด",
-            
+
         }
     },
 };

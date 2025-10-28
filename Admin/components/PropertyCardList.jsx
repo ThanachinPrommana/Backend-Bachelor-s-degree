@@ -62,6 +62,7 @@ const PropertyCardList = () => {
                     const createdAt = new Date(params.createdAt).toLocaleDateString("th-TH", { year: 'numeric', month: 'short', day: 'numeric' });
                     const imgUrl = params._firstImage || null;
                     const categoryName = params._categoryName || 'N/A';
+                    const deposit = params.Deposit_Amount != null ? Number(params.Deposit_Amount).toLocaleString() : null;
 
                     const categoryTranslations = {
                         condo: 'คอนโด', house: 'บ้าน', land: 'ที่ดิน', villa: 'วิลล่า', townhouse: 'ทาวน์เฮาส์',
@@ -78,6 +79,11 @@ const PropertyCardList = () => {
                         HIDDEN: 'ซ่อน',
                         REJECTED: 'ถูกปฏิเสธ',
                     };
+                    const sellRentTranslations = {
+                        SALE: 'ขาย',
+                        RENT: 'เช่า',
+                    };
+                    const sellRentText = sellRentTranslations[sellRent] || sellRent;
                     const statusText = statusTranslations[status] || status;
                     const style = badgeStyles[status] || badgeStyles.default;
 
@@ -87,10 +93,23 @@ const PropertyCardList = () => {
 
                             {/* === Section: Main Info === */}
                             <H2 m={0} fontSize="xl" mb="sm">{name}</H2>
-                            <Box display="flex" flexWrap="wrap" alignItems="center" mb="md" style={{ gap: '12px' }}>
-                                <Text fontWeight="bold" fontSize="lg" color="primary100">{price} บาท</Text>
-                                <Text color="grey80">{`${displayValue(params.District, '')}, ${displayValue(params.Province, '')}`}</Text>
-                                <Badge variant="primary">{sellRent}</Badge>
+                            <Box display="flex" flexWrap="wrap" alignItems="flex-start" mb="md" style={{ gap: '12px' }}>
+
+                                {/* 1. หุ้มราคาและมัดจำไว้ด้วยกัน */}
+                                <Box>
+                                    <Text fontWeight="bold" fontSize="lg" color="primary100">{price} บาท</Text>
+
+                                    {/* 2. เพิ่มส่วนแสดงมัดจำ (จะแสดงเฉพาะเมื่อมีข้อมูล) */}
+                                    {deposit && (
+                                        <Text fontSize="md" color="grey80" mt="xs">
+                                            (มัดจำ: {deposit} บาท)
+                                        </Text>
+                                    )}
+                                </Box>
+
+                                {/* 3. (แนะนำ) เพิ่ม mt="6px" เพื่อจัดแนวให้สวยงาม */}
+                                <Text color="grey80" mt="6px">{`${displayValue(params.District, '')}, ${displayValue(params.Province, '')}`}</Text>
+                                <Badge variant="primary" mt="6px">{sellRentText}</Badge> {/* ⬅️ แก้ไขบรรทัดนี้ */}
                             </Box>
 
                             {/* === Section: Description === */}
