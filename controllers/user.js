@@ -1006,9 +1006,11 @@ export const createDateTimeSlot = async (req, res) => {
       .status(403)
       .json({ message: "Forbidden: คุณไม่มีสิทธิ์ในการสร้างช่วงเวลา" });
 
-  const { date, timeSlots, postId } = req.body;
+  const { date, timeSlots, postId, documentUploadId } = req.body;
   if (!postId)
     return res.status(400).json({ message: "กรุณาระบุ postId ของทรัพย์สิน" });
+  if (!documentUploadId)
+    return res.status(400).json({ message: "กรุณาระบุ documentUploadId ของเอกสารมัดจำ" });
   if (!date || !Array.isArray(timeSlots) || timeSlots.length === 0)
     return res
       .status(400)
@@ -1029,6 +1031,33 @@ export const createDateTimeSlot = async (req, res) => {
         .status(403)
         .json({ message: "Forbidden: คุณไม่ใช่เจ้าของโพสต์นี้" });
 
+    // 5. --- (Optional แต่แนะนำ) ตรวจสอบ DocumentUpload ---
+    const document = await prisma.documentUpload.findUnique({
+      where: { id: documentUploadId },
+      select: { postId: true, userId: true /* อาจจะ select ข้อมูลอื่น ๆ เพิ่มเติม */ },
+    });
+    if (!document)
+      return res
+        .status(404)
+        .json({ message: `ไม่พบ DocumentUpload ที่มี ID: ${documentUploadId}` });
+    // ตรวจสอบว่าเอกสารเชื่อมโยงกับ Post ID ที่ถูกต้อง
+    if (document.postId !== postId)
+      return res
+        .status(400)
+        .json({ message: "เอกสารที่เลือกไม่ตรงกับโพสต์ที่ระบุ" });
+    // (เพิ่มเติม) อาจจะตรวจสอบสถานะของเอกสาร (Review_Status) หรือ Deposit ที่เกี่ยวข้องก็ได้
+
+    // 6. --- (เพิ่ม) ตรวจสอบว่า date ไม่ใช่อดีต (เหมือนที่เคยทำ) ---
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const inputDate = new Date(date + "T00:00:00");
+    if (isNaN(inputDate.getTime())) {
+      return res.status(400).json({ message: `รูปแบบวันที่ '${date}' ไม่ถูกต้อง` });
+    }
+    if (inputDate < today) {
+      return res.status(400).json({ message: "ไม่สามารถสร้างช่วงเวลาในอดีตได้" });
+    }
+
     const slotsToCreate = [];
     for (const slot of timeSlots) {
       if (!slot.startTime || !slot.endTime)
@@ -1046,6 +1075,11 @@ export const createDateTimeSlot = async (req, res) => {
           `เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มต้น: ${slot.startTime}-${slot.endTime}`
         );
 
+      const now = new Date();
+      if (inputDate.toDateString() === today.toDateString() && startDate < now) {
+        throw new Error(`ไม่สามารถสร้างช่วงเวลา ${slot.startTime}-${slot.endTime} ในอดีตของวันนี้ได้`);
+      }
+
       const existingSlot = await prisma.dateTimeSlot.findFirst({
         where: {
           postId,
@@ -1062,6 +1096,7 @@ export const createDateTimeSlot = async (req, res) => {
         endTime: endDate,
         sellerId,
         postId,
+        documentUploadId: documentUploadId,
       });
     }
     // กันทับซ้อนใน payload เอง
@@ -1100,6 +1135,7 @@ export const createBooking = async (req, res) => {
     userType: bookerUserType,
     buyerId: sessionBuyerId,
     sellerId: sessionSellerId,
+    userId: sessionUserId,
   } = req.session.user;
   const { dateTimeSlotId, unitId, buyerId: buyerIdFromRequest } = req.body;
   if (!dateTimeSlotId || !unitId)
@@ -1108,7 +1144,7 @@ export const createBooking = async (req, res) => {
       .json({ message: "กรุณาระบุ dateTimeSlotId และ unitId" });
 
   try {
-    const newBooking = await prisma.$transaction(
+    const { booking: newBooking, documentsToDelete } = await prisma.$transaction(
       async (tx) => {
         const slot = await tx.dateTimeSlot.findUnique({
           where: { id: dateTimeSlotId },
@@ -1131,11 +1167,34 @@ export const createBooking = async (req, res) => {
         let buyerId;
 
         const sellerId = slot.sellerId;
-        if (bookerUserType === "Buyer") buyerId = sessionBuyerId;
-        else if (bookerUserType === "Seller") {
-          if (sellerId !== sessionSellerId) throw new Error("FORBIDDEN");
+
+        if (bookerUserType === "Buyer") {
+          // กรณีผู้จองเป็น Buyer
+          if (!sessionBuyerId) throw new Error("INVALID_BUYER_SESSION");
+          buyerId = sessionBuyerId;
+
+        } else if (bookerUserType === "Seller") {
+          // กรณีผู้จองเป็น Seller (ไม่เช็คว่าเป็นเจ้าของหรือไม่)
+
+          // ลบการตรวจสอบ FORBIDDEN ออกตามที่ร้องขอ
+          // if (sellerId !== sessionSellerId) {
+          //   throw new Error("FORBIDDEN");
+          // }
+
+          // หา buyerId:
+          // 1. ใช้ ID จาก Request (ถ้า Seller จองให้คนอื่น)
+          // 2. ใช้ ID จาก Session (ถ้า Seller จองให้ตัวเอง)
           buyerId = buyerIdFromRequest || sessionBuyerId;
-        } else throw new Error("INVALID_USER_TYPE");
+
+          // ตรวจสอบสุดท้าย: ถ้าหา buyerId ไม่ได้เลย
+          if (!buyerId) {
+            throw new Error("BUYER_ID_MISSING");
+          }
+
+        } else {
+          // User Type อื่นๆ ไม่สามารถจองได้
+          throw new Error("INVALID_USER_TYPE");
+        }
 
         await tx.dateTimeSlot.update({
           where: { id: dateTimeSlotId },
@@ -1145,21 +1204,80 @@ export const createBooking = async (req, res) => {
           data: { buyerId, sellerId, dateTimeSlotId, propertyUnitId: unitId },
         });
 
-        await tx.documentUpload.updateMany({
-          where: {
-            userId: req.session.user.userId,
-            postId: postId,
-            unitId: unitId
-          },
-          data: {
-            Review_Status: "HIDDEN",
-          }
-        })
+        const whereClause = {
+          userId: sessionUserId, // ⭐️ (แก้ไข) ใช้ sessionUserId ที่ดึงมา
+          postId: postId,
+          unitId: unitId
+        };
 
-        return booking;
+        const documentsToDeleteDetails = await tx.documentUpload.findMany({
+          where: whereClause,
+          select: { id: true, CloudinaryPublicId: true }
+        });
+
+        if (documentsToDeleteDetails.length > 0) {
+          const documentIdsToDelete = documentsToDeleteDetails.map(d => d.id);
+
+          // 2. (เพิ่ม) ⭐️ "ตัดการเชื่อมโยง" Foreign Key ใน DateTimeSlot
+          // โดยตั้งค่า documentUploadId ให้เป็น null
+          await tx.dateTimeSlot.updateMany({
+            where: {
+              documentUploadId: { in: documentIdsToDelete }
+            },
+            data: {
+              documentUploadId: null
+            }
+          });
+
+          // 3. (เดิม) ลบเอกสารออกจากฐานข้อมูล (ตอนนี้ทำได้แล้ว)
+          await tx.documentUpload.deleteMany({
+            where: whereClause
+          });
+        }
+        // ===================================================
+
+        // 2. ลบเอกสารออกจากฐานข้อมูล
+        await tx.documentUpload.deleteMany({
+          where: whereClause
+        });
+
+        // 2. ลบเอกสารออกจากฐานข้อมูล
+        await tx.documentUpload.deleteMany({
+          where: whereClause
+        });
+
+        // await tx.documentUpload.updateMany({
+        //   where: {
+        //     userId: req.session.user.userId,
+        //     postId: postId,
+        //     unitId: unitId
+        //   },
+        //   data: {
+        //     Review_Status: "HIDDEN",
+        //   }
+        // })
+
+        return { booking, documentsToDelete: documentsToDeleteDetails };
+        // return booking;
       },
       { timeout: 10000 }
     );
+    
+    // 5. (เดิม) ลบไฟล์ออกจาก Cloudinary *หลังจาก* ที่ Transaction สำเร็จ
+    if (documentsToDelete && documentsToDelete.length > 0) {
+      const publicIds = documentsToDelete
+        .map(doc => doc.CloudinaryPublicId)
+        .filter(Boolean);
+
+      if (publicIds.length > 0) {
+        console.log(`[Booking Success] Cleaning up ${publicIds.length} files from Cloudinary...`);
+        try {
+          await cloudinary.api.delete_resources(publicIds);
+        } catch (cleanupError) {
+          console.warn("Cloudinary cleanup failed after booking:", cleanupError.message);
+        }
+      }
+    }
 
     res
       .status(201)
@@ -1177,8 +1295,16 @@ export const createBooking = async (req, res) => {
       return res
         .status(400)
         .json({ message: "ข้อมูลช่วงเวลาและยูนิตไม่ตรงกัน" });
-    if (error.message === "FORBIDDEN")
-      return res.status(403).json({ message: "คุณไม่มีสิทธิ์จองช่วงเวลานี้" });
+    // if (error.message === "FORBIDDEN")
+    //   return res.status(403).json({ message: "คุณไม่มีสิทธิ์จองช่วงเวลานี้" });
+    if (error.message === "BUYER_ID_MISSING")
+      return res
+        .status(400)
+        .json({ message: "ไม่สามารถระบุผู้ซื้อสำหรับการจองนี้ได้" });
+    if (error.message === "INVALID_BUYER_SESSION")
+      return res
+        .status(401)
+        .json({ message: "เซสชั่นผู้ซื้อไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่" });
     console.error("เกิดข้อผิดพลาดในการสร้าง Booking:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดจากเซิร์ฟเวอร์" });
   }

@@ -170,22 +170,23 @@ model Deposit {
 }
 
 model DocumentUpload {
-  id                 String        @id @default(cuid())
+  id                 String         @id @default(cuid())
   DocumentName       String
   DocumentUrl        String
   CloudinaryPublicId String?
   Review_Status      Status_Review
   Rejection_Note     String?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
   userId             String
   depositId          String?
   postId             String?
   unitId             String?
-  Deposit            Deposit?      @relation(fields: [depositId], references: [id])
-  Post               PropertyPost? @relation(fields: [postId], references: [id])
-  unit               PropertyUnit? @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  User               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Deposit            Deposit?       @relation(fields: [depositId], references: [id])
+  Post               PropertyPost?  @relation(fields: [postId], references: [id])
+  unit               PropertyUnit?  @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  User               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  DateTimeSlot       DateTimeSlot[]
 
   @@index([postId])
   @@index([userId])
@@ -269,17 +270,19 @@ model Video {
 }
 
 model DateTimeSlot {
-  id        String        @id @default(cuid())
-  startTime DateTime
-  endTime   DateTime
-  isBooked  Boolean       @default(false)
-  sellerId  String
-  postId    String?
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  Booking   Booking?
-  Post      PropertyPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
-  Seller    Seller        @relation(fields: [sellerId], references: [id])
+  id               String          @id @default(cuid())
+  startTime        DateTime
+  endTime          DateTime
+  isBooked         Boolean         @default(false)
+  sellerId         String
+  postId           String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  Booking          Booking?
+  Post             PropertyPost?   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  Seller           Seller          @relation(fields: [sellerId], references: [id])
+  DocumentUpload   DocumentUpload? @relation(fields: [documentUploadId], references: [id], onDelete: Cascade)
+  documentUploadId String?
 
   @@index([sellerId, startTime])
   @@index([postId, startTime])

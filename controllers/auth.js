@@ -614,7 +614,7 @@ export const registerSeller = async (req, res) => {
       // ตรวจสอบข้อมูลซ้ำ (เลขบัตร/ใบอนุญาต/userId)
       const existingSeller = await tx.seller.findFirst({
         where: {
-          OR: [{ National_ID }, { RealEstate_License }, { userId }],
+          OR: [{ National_ID }, { userId }],
         },
       });
       if (existingSeller) throw new Error("ผู้ขายได้ลงทะเบียนแล้ว");
