@@ -48,18 +48,27 @@ model Buyer {
   Nearby_Facilities     Nearby_Facilities?
   Lifestyle_Preferences Lifestyle_Preferences?
   Special_Requirements  String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  Booking               Booking[]
-  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  National_ID           String                 @unique
+  Reg_HouseNo           String?
+  Reg_Village           String?
+  Reg_Alley             String?
+  Reg_Road              String?
+  Reg_Subdistrict       String?
+  Reg_District          String?
+  Reg_Province          String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  Booking   Booking[]
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
 model Seller {
-  id                 String         @id @default(cuid())
-  userId             String         @unique
-  National_ID        String         @unique
+  id     String @id @default(cuid())
+  userId String @unique
+
   Company_Name       String?
   RealEstate_License String?        @unique
   Status             Status_Seller  @default(PENDING)

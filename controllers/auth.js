@@ -1,4 +1,4 @@
-// controllers/auth.js (Merged ESM version)
+// controllers/auth.js (ESM, updated for nationalId + regAddress at Buyer signup)
 
 import prisma from "../config/prisma.js";
 import bcrypt from "bcryptjs";
@@ -13,27 +13,82 @@ import { sendResetEmail, verifyemail } from "../utils/email.js";
 /* ========== Helpers ========== */
 const getSessionUserId = (req) => {
   const u = req.session?.user;
-  return u?.userId ?? u?.id ?? null; // รองรับทั้ง userId และ id
+  return u?.userId ?? u?.id ?? null;
 };
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.replace(/\/+$/, "") || "http://localhost:5173";
 
-/* ========== preRegister ========== */
+// ตรวจเลขบัตร ปชช. 13 หลัก + checksum (inline, ไม่ต้องแยกไฟล์)
+const isThaiNationalIdValid = (id) => {
+  const s = String(id || "").replace(/\D/g, "");
+  if (!/^\d{13}$/.test(s)) return false;
+  const d = s.split("").map(Number);
+  const sum = d.slice(0, 12).reduce((acc, x, i) => acc + x * (13 - i), 0);
+  const check = (11 - (sum % 11)) % 10;
+  return check === d[12];
+};
+const maskThaiId = (s = "") =>
+  s && s.length === 13
+    ? `${s[0]}-${s.slice(1, 5)}-${s.slice(5, 10)}-${s.slice(10, 12)}-${s[12]}`
+    : s;
+
+/* ========== preRegister (ส่งลิงก์ยืนยัน) ========== */
+/**
+ * ฝั่ง frontend จะโพสต์มาพร้อม:
+ * {
+ *   First_name, Last_name, Email, Phone, Password,
+ *   nationalId,
+ *   regAddress: { houseNo, village, alley, road, subdistrict, district, province }
+ * }
+ */
 export const preRegister = async (req, res) => {
   try {
-    const { Email, Password, Phone, First_name, Last_name } = req.body;
+    const {
+      Email,
+      Password,
+      Phone,
+      First_name,
+      Last_name,
+      nationalId,
+      regAddress,
+    } = req.body;
 
     if (!Email) return res.status(400).json({ message: "ไม่พบอีเมล" });
     if (!Password)
       return res.status(400).json({ message: "รหัสผ่านไม่ถูกต้อง" });
 
+    // ✅ บังคับข้อมูลบัตร + ที่อยู่ทะเบียนบ้าน ให้ครบตั้งแต่ขั้นนี้
+    if (!nationalId) {
+      return res.status(400).json({ message: "กรุณากรอกเลขบัตรประชาชน" });
+    }
+    if (!isThaiNationalIdValid(nationalId)) {
+      return res.status(400).json({ message: "เลขบัตรประชาชนไม่ถูกต้อง" });
+    }
+    if (
+      !regAddress ||
+      !regAddress.houseNo ||
+      !regAddress.village ||
+      !regAddress.alley ||
+      !regAddress.road ||
+      !regAddress.subdistrict ||
+      !regAddress.district ||
+      !regAddress.province
+    ) {
+      return res
+        .status(400)
+        .json({ message: "กรุณากรอกที่อยู่ตามทะเบียนบ้านให้ครบ" });
+    }
+
+    // กัน email ซ้ำ
     const existingUser = await prisma.user.findFirst({ where: { Email } });
     if (existingUser) {
       return res.status(400).json({ message: "คุณมีอีเมลนี้อยู่แล้ว" });
     }
 
     const hashedPassword = await bcrypt.hash(Password, 10);
+
+    // ฝังข้อมูลจำเป็นทั้งหมดลง token (อายุ 10 นาที)
     const token = jwt.sign(
       {
         Email,
@@ -42,6 +97,8 @@ export const preRegister = async (req, res) => {
         First_name,
         Last_name,
         userType: "Buyer",
+        nationalId: String(nationalId).replace(/\D/g, ""),
+        regAddress, // {houseNo,...,province}
       },
       process.env.SECRETKEY,
       { expiresIn: "10m" }
@@ -49,7 +106,7 @@ export const preRegister = async (req, res) => {
 
     const encodedToken = Buffer.from(token).toString("base64");
     const link = `${FRONTEND_URL}/verifyemail?token=${encodedToken}`;
-    console.log("token:", encodedToken)
+    console.log("preRegister token(base64):", encodedToken);
     await verifyemail(Email, link);
     return res.json({ message: "ยืนยันอีเมล ได้ถูกส่งไปแล้ว" });
   } catch (err) {
@@ -59,6 +116,18 @@ export const preRegister = async (req, res) => {
 };
 
 /* ========== verify & register (Buyer) ========== */
+/**
+ * Frontend จะเรียกมาพร้อม:
+ * {
+ *   token: "<base64-jwt>",
+ *   // ด้านล่างเป็น optional (ค่า preference/ข้อมูลเพิ่มของ Buyer)
+ *   DateofBirth, Occupation, Monthly_Income, Family_Size,
+ *   Preferred_Province, Preferred_District, Preferred_Subdistrict,
+ *   Parking_Needs, Nearby_Facilities, Lifestyle_Preferences, Special_Requirements
+ * }
+ * เราจะอ่าน Email/Password/Phone/First_name/Last_name + nationalId + regAddress จาก token
+ * แล้วรวมกับค่า prefs ใน body เพื่อสร้าง User + Buyer
+ */
 export const verifyandregister = async (req, res) => {
   try {
     const {
@@ -79,7 +148,7 @@ export const verifyandregister = async (req, res) => {
     if (!encodedToken)
       return res.status(400).json({ message: "Missing verification token" });
 
-    // ฟิลด์ Buyer สำคัญตามสคีมาล่าสุด (กันข้อมูลไม่ครบ)
+    // ถ้าต้องการบังคับ prefs ขั้นต่ำ (ตามของเดิม)
     if (
       Monthly_Income == null ||
       Family_Size == null ||
@@ -94,13 +163,22 @@ export const verifyandregister = async (req, res) => {
 
     const originalToken = Buffer.from(encodedToken, "base64").toString("ascii");
     const decoded = jwt.verify(originalToken, process.env.SECRETKEY);
-    const { Email, Password, Phone, First_name, Last_name } = decoded;
 
-    // ป้องกันสมัครซ้ำ (กันกดลิงก์ยืนยันมากกว่า 1 ครั้ง)
+    const {
+      Email,
+      Password, // hashed from preRegister
+      Phone,
+      First_name,
+      Last_name,
+      nationalId,
+      regAddress,
+    } = decoded;
+
+    // ป้องกันสมัครซ้ำ
     const dup = await prisma.user.findFirst({ where: { Email } });
     if (dup) return res.status(400).json({ message: "Email already exists" });
 
-    // Validate enum แบบ optional (ถ้าไม่ส่งมา = ไม่เช็ค)
+    // validate enums (optional)
     if (
       Parking_Needs &&
       !Object.values(ParkingNeedsEnum).includes(Parking_Needs)
@@ -124,16 +202,28 @@ export const verifyandregister = async (req, res) => {
         .json({ message: "Invalid Lifestyle_Preferences value" });
     }
 
+    // ✅ สร้าง User + Buyer พร้อมเลขบัตรและที่อยู่ทะเบียนบ้าน
     await prisma.user.create({
       data: {
         Email,
-        Password, // hashed จาก preRegister ที่ฝังมาใน token
+        Password,
         Phone,
         First_name,
         Last_name,
         userType: "Buyer",
         Buyer: {
           create: {
+            // บังคับจาก token:
+            National_ID: nationalId,
+            Reg_HouseNo: regAddress?.houseNo ?? null,
+            Reg_Village: regAddress?.village ?? null,
+            Reg_Alley: regAddress?.alley ?? null,
+            Reg_Road: regAddress?.road ?? null,
+            Reg_Subdistrict: regAddress?.subdistrict ?? null,
+            Reg_District: regAddress?.district ?? null,
+            Reg_Province: regAddress?.province ?? null,
+
+            // prefs จาก body:
             DateofBirth: DateofBirth ? new Date(DateofBirth) : null,
             Occupation: Occupation || null,
             Monthly_Income: Number(Monthly_Income),
@@ -152,6 +242,10 @@ export const verifyandregister = async (req, res) => {
 
     return res.send("Register success");
   } catch (err) {
+    if (err?.code === "P2002") {
+      // unique constraint (เช่น National_ID ซ้ำ)
+      return res.status(400).json({ message: "เลขบัตรนี้ถูกใช้งานแล้ว" });
+    }
     console.error("verifyandregister error:", err);
     return res.status(500).json({ message: "Server Error" });
   }
@@ -168,7 +262,8 @@ export const login = async (req, res) => {
     if (!user) return res.status(400).json({ message: "ยังไม่มีบัญชีนี้" });
 
     const is_Match = await bcrypt.compare(Password, user.Password);
-    if (!is_Match) return res.status(400).json({ message: "รหัสผ่านไม่ถูกต้อง" });
+    if (!is_Match)
+      return res.status(400).json({ message: "รหัสผ่านไม่ถูกต้อง" });
 
     const payload = {
       userId: user.id,
@@ -211,7 +306,8 @@ export const login = async (req, res) => {
 export const forgotPassword = async (req, res) => {
   try {
     const { Email } = req.body;
-    if (!Email) return res.status(400).json({ message: "ไม่เจออีเมลดังกล่าวในระบบ" });
+    if (!Email)
+      return res.status(400).json({ message: "ไม่เจออีเมลดังกล่าวในระบบ" });
 
     const user = await prisma.user.findFirst({ where: { Email } });
     if (!user) return res.status(404).json({ message: "ไม่พบผู้ใช้" });
@@ -219,7 +315,7 @@ export const forgotPassword = async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, email: user.Email },
       process.env.SECRETKEY,
-      { expiresIn: "10m" } // ให้ตรงกับ expiresAt ที่บันทึก 10 นาที
+      { expiresIn: "10m" }
     );
 
     await prisma.passwordResetToken.create({
@@ -233,7 +329,9 @@ export const forgotPassword = async (req, res) => {
     const resetLink = `${FRONTEND_URL}/resetpassword?token=${token}`;
     await sendResetEmail(Email, resetLink);
 
-    return res.json({ message: "ลิงค์รีเซ็ตรหัสผ่านถูกส่งไปยังอีเมลของคุณแล้ว" });
+    return res.json({
+      message: "ลิงค์รีเซ็ตรหัสผ่านถูกส่งไปยังอีเมลของคุณแล้ว",
+    });
   } catch (err) {
     console.error("forgotPassword error:", err);
     return res.status(500).json({ message: "Server Error" });
@@ -281,7 +379,7 @@ export const getProfile = async (req, res) => {
         Seller: {
           select: {
             id: true,
-            National_ID: true,
+            // ❌ ตัด National_ID ออก (อยู่ที่ Buyer แล้ว)
             Company_Name: true,
             RealEstate_License: true,
             Status: true,
@@ -292,13 +390,8 @@ export const getProfile = async (req, res) => {
                 startTime: true,
                 endTime: true,
                 isBooked: true,
-                Post: {
-                  select: {
-                    id: true,
-                    Property_Name: true
-                  }
-                }
-              }
+                Post: { select: { id: true, Property_Name: true } },
+              },
             },
             Booking: {
               select: {
@@ -307,46 +400,33 @@ export const getProfile = async (req, res) => {
                 propertyUnitId: true,
                 propertyUnit: {
                   select: {
-                    propertyPost: {
-                      select: {
-                        id: true,
-                        Property_Name: true,
-                      }
-                    }
-                  }
+                    propertyPost: { select: { id: true, Property_Name: true } },
+                  },
                 },
-                dateTimeSlot: {
-                  select: {
-                    startTime: true,
-                    endTime: true
-                  }
-                },
+                dateTimeSlot: { select: { startTime: true, endTime: true } },
                 Seller: {
                   select: {
-                    user: {
-                      select: {
-                        First_name: true,
-                        Last_name: true,
-
-
-                      }
-                    }
-                  }
-                }
-              }
-            }
+                    user: { select: { First_name: true, Last_name: true } },
+                  },
+                },
+              },
+            },
           },
         },
-        Payment: {
-          select: {
-            Payment_Slip: true,
-            postId: true,
-            unitId: true,
-          }
-        },
+        Payment: { select: { Payment_Slip: true, postId: true, unitId: true } },
         Buyer: {
           select: {
             id: true,
+            // ✅ แสดงเลขบัตร + ที่อยู่ทะเบียนบ้าน (ฝั่ง UI ควร mask)
+            National_ID: true,
+            Reg_HouseNo: true,
+            Reg_Village: true,
+            Reg_Alley: true,
+            Reg_Road: true,
+            Reg_Subdistrict: true,
+            Reg_District: true,
+            Reg_Province: true,
+
             DateofBirth: true,
             Occupation: true,
             Monthly_Income: true,
@@ -358,7 +438,7 @@ export const getProfile = async (req, res) => {
             Nearby_Facilities: true,
             Lifestyle_Preferences: true,
             Special_Requirements: true,
-            // จากไฟล์ที่จะ merge:
+
             Booking: {
               select: {
                 id: true,
@@ -366,49 +446,17 @@ export const getProfile = async (req, res) => {
                 propertyUnitId: true,
                 propertyUnit: {
                   select: {
-                    propertyPost: {
-                      select: {
-                        id: true,
-                        Property_Name: true,
-                      }
-                    }
-                  }
+                    propertyPost: { select: { id: true, Property_Name: true } },
+                  },
                 },
-                dateTimeSlot: {
-                  select: {
-                    startTime: true,
-                    endTime: true
-                  }
-                },
+                dateTimeSlot: { select: { startTime: true, endTime: true } },
                 Seller: {
                   select: {
-                    user: {
-                      select: {
-                        First_name: true,
-                        Last_name: true,
-                      }
-                    }
-                  }
+                    user: { select: { First_name: true, Last_name: true } },
+                  },
                 },
-                // Buyer: {
-                //   select: {
-                //     user: {
-                //       select: {
-                //         First_name: true,
-                //         Last_name: true,
-                //         Payment: {
-                //           select: {
-                //             Payment_Slip: true,
-                //             postId: true
-                //           }
-                //         }
-
-                //       }
-                //     }
-                //   }
-                // }
-              }
-            }
+              },
+            },
           },
         },
         Deposit: {
@@ -449,14 +497,14 @@ export const getProfile = async (req, res) => {
                           select: {
                             id: true,
                             First_name: true,
-                            Last_name: true
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
+                            Last_name: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
             DocumentUpload: {
               orderBy: { createdAt: "desc" },
@@ -469,35 +517,21 @@ export const getProfile = async (req, res) => {
                 postId: true,
                 unitId: true,
                 User: {
-                  select: {
-                    id: true,
-                    First_name: true,
-                    Last_name: true,
-                  },
+                  select: { id: true, First_name: true, Last_name: true },
                 },
-
-                // (เพิ่ม) ใส่ Post และ unit เข้าไปใน select ของ DocumentUpload ตัวนี้ครับ
-                Post: {
-                  select: {
-                    Property_Name: true
-                  }
-                },
+                Post: { select: { Property_Name: true } },
                 unit: {
                   select: {
                     Unit_Number: true,
-                    Deposit: {
-                      select: {
-                        Deposit_Status: true
-                      }
-                    },
+                    Deposit: { select: { Deposit_Status: true } },
                     Booking: {
                       select: {
                         id: true,
                         bookingStatus: true,
-                        finalSlipUrl: true
-                      }
-                    }
-                  }
+                        finalSlipUrl: true,
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -513,36 +547,21 @@ export const getProfile = async (req, res) => {
             createdAt: true,
             postId: true,
             unitId: true,
-            User: {
-              select: {
-                id: true,
-                First_name: true,
-                Last_name: true,
-              },
-            },
-            Post: {
-              select: {
-                Property_Name: true
-              }
-            },
+            User: { select: { id: true, First_name: true, Last_name: true } },
+            Post: { select: { Property_Name: true } },
             unit: {
               select: {
                 Unit_Number: true,
-                Deposit: {
-                  select: {
-                    Deposit_Status: true
-                  }
-                },
+                Deposit: { select: { Deposit_Status: true } },
                 Booking: {
                   select: {
                     id: true,
                     bookingStatus: true,
                     finalSlipUrl: true,
-                  }
-                }
-
-              }
-            }
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -551,7 +570,12 @@ export const getProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.Password) delete user.Password;
 
-    // Sync session ให้เป็นปัจจุบัน
+    // ปรับเลขบัตรให้ mask ก่อนส่ง (กันหลุด plain)
+    if (user.Buyer?.National_ID) {
+      user.Buyer.National_ID = maskThaiId(user.Buyer.National_ID);
+    }
+
+    // Sync session
     req.session.user = {
       userId: user.id,
       Email: user.Email,
@@ -593,41 +617,47 @@ export const logout = (req, res) => {
   }
 };
 
-/* ========== registerSeller ========== */
+/* ========== registerSeller (อัปเกรดเป็นผู้ขาย) ========== */
+/**
+ * เปลี่ยนแปลงสำคัญ:
+ * - ❌ ไม่รับ National_ID จาก body แล้ว
+ * - ✅ ไม่บังคับแนบไฟล์ (ถ้ามีก็เก็บ, ถ้าไม่มีไม่เป็นไร)
+ * - ✅ เช็กว่า user มี Buyer และ Buyer.National_ID อยู่ก่อน (สมัครเป็นผู้ซื้อแล้วเท่านั้น)
+ */
 export const registerSeller = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: "กรุณาแนบรูปภาพบัตรประชาชน" });
-    }
-
     const userId = getSessionUserId(req);
     if (!userId) {
-      return res.status(401).json({ message: "ไม่ได้รับอนุญาต กรุณาเข้าสู่ระบบ" });
+      return res
+        .status(401)
+        .json({ message: "ไม่ได้รับอนุญาต กรุณาเข้าสู่ระบบ" });
     }
 
-    const { National_ID, Company_Name, RealEstate_License } = req.body;
-    if (!National_ID) {
-      return res.status(400).json({ message: "กรุณากรอกข้อมูลบัตรประชาชน" });
+    // ต้องเป็น Buyer ที่มีเลขบัตรแล้ว
+    const buyer = await prisma.buyer.findUnique({ where: { userId } });
+    if (!buyer || !buyer.National_ID) {
+      return res
+        .status(400)
+        .json({ message: "กรุณาสมัครเป็นผู้ซื้อและยืนยันเลขบัตรก่อน" });
     }
+
+    const { Company_Name, RealEstate_License, StartTime } = req.body;
+    const file = req.file; // แนบมาก็เก็บ ไม่แนบก็ผ่าน
 
     const result = await prisma.$transaction(async (tx) => {
-      // ตรวจสอบข้อมูลซ้ำ (เลขบัตร/ใบอนุญาต/userId)
-      const existingSeller = await tx.seller.findFirst({
-        where: {
-          OR: [{ National_ID }, { userId }],
-        },
-      });
-      if (existingSeller) throw new Error("ผู้ขายได้ลงทะเบียนแล้ว");
+      // ผู้ใช้ซ้ำ?
+      const existed = await tx.seller.findUnique({ where: { userId } });
+      if (existed) throw new Error("ผู้ขายได้ลงทะเบียนแล้ว");
 
       const newSeller = await tx.seller.create({
         data: {
           userId,
-          National_ID,
-          Company_Name,
-          RealEstate_License,
+          Company_Name: Company_Name || null,
+          RealEstate_License: RealEstate_License || null,
           Status: "PENDING",
-          nationalIdImage: req.file.path, // Cloudinary URL
-          publicId: req.file.filename, // Cloudinary public_id
+          nationalIdImage: file?.path || null,
+          publicId: file?.filename || null,
+          StartTime: StartTime ? new Date(StartTime) : null,
         },
       });
 
@@ -639,18 +669,17 @@ export const registerSeller = async (req, res) => {
       return newSeller;
     });
 
-    // อัปเดต session ให้เป็นผู้ขายด้วย
+    // sync session
     req.session.user = {
       ...(req.session.user || {}),
       userId,
       userType: "Seller",
       sellerId: result.id,
     };
-    req.session.save();
+    req.session.save?.();
 
     return res.status(201).json({
-      message:
-        "การลงทะเบียนผู้ขายสำเร็จ! ใบสมัครของคุณอยู่ระหว่างการพิจารณา",
+      message: "การลงทะเบียนผู้ขายสำเร็จ! ใบสมัครของคุณอยู่ระหว่างการพิจารณา",
       seller: result,
     });
   } catch (err) {
