@@ -371,7 +371,7 @@ const addPriceFilter = (where, { minPrice, maxPrice }) => {
   return Object.keys(Price).length ? { ...where, Price } : where;
 };
 
-/* =============== SEARCH (public feed with pagination) =============== */
+/* =============== SEARCH (public feed with pagination + SORT) =============== */
 export const searchFilters = async (req, res) => {
   try {
     const {
@@ -384,6 +384,7 @@ export const searchFilters = async (req, res) => {
       maxPrice,
       take: takeRaw,
       skip: skipRaw,
+      sort: sortRaw, // <— รับค่าจัดเรียง
     } = req.body;
 
     const take = Math.min(Number(takeRaw) || 20, 100);
@@ -396,6 +397,14 @@ export const searchFilters = async (req, res) => {
       where = addLocationFilter(where, { province, district, subdistrict });
     if (minPrice || maxPrice)
       where = addPriceFilter(where, { minPrice, maxPrice });
+
+    const sort = String(sortRaw || "latest");
+    const orderBy =
+      sort === "priceAsc"
+        ? { Price: "asc" }
+        : sort === "priceDesc"
+        ? { Price: "desc" }
+        : { createdAt: "desc" }; // latest (ดีฟอลต์)
 
     const [posts, total] = await prisma.$transaction([
       prisma.propertyPost.findMany({
@@ -411,7 +420,7 @@ export const searchFilters = async (req, res) => {
           Image: { take: 1, select: { url: true, secure_url: true } },
           createdAt: true,
         },
-        orderBy: { createdAt: "desc" },
+        orderBy,
         take,
         skip,
       }),
@@ -527,8 +536,8 @@ export const removepost = async (req, res) => {
         : Promise.resolve(),
       videoPublicIds.length
         ? cloudinary.api.delete_resources(videoPublicIds, {
-          resource_type: "video",
-        })
+            resource_type: "video",
+          })
         : Promise.resolve(),
     ]);
 
@@ -734,8 +743,8 @@ export const updatePost = async (req, res) => {
         oldVideos.map((v) =>
           v.public_id
             ? cloudinary.uploader.destroy(v.public_id, {
-              resource_type: "video",
-            })
+                resource_type: "video",
+              })
             : Promise.resolve()
         )
       );
@@ -776,13 +785,55 @@ export const getallcategory = async (_req, res) => {
   }
 };
 
-/* =============== HOMEPAGE FEED (personalized ordering) =============== */
+/* =============== HOMEPAGE FEED (personalized ordering + SORT) =============== */
 export const getHomePagePosts = async (req, res) => {
   try {
     const userFromSession = req.session?.user;
     const userId = userFromSession ? userFromSession.userId : null;
-    let buyerPreferences = null;
 
+    const sortRaw = String(req.query.sort || "preferred"); // default = preferred
+    const sort = ["preferred", "latest", "priceAsc", "priceDesc"].includes(
+      sortRaw
+    )
+      ? sortRaw
+      : "preferred";
+
+    const take = Math.min(Number(req.query.take) || 100, 100);
+    const skip = Math.max(Number(req.query.skip) || 0, 0);
+
+    // ถ้าไม่ใช่ preferred → ให้ DB order ให้เลย
+    if (sort !== "preferred") {
+      const orderBy =
+        sort === "priceAsc"
+          ? { Price: "asc" }
+          : sort === "priceDesc"
+          ? { Price: "desc" }
+          : { createdAt: "desc" }; // latest
+
+      const posts = await prisma.propertyPost.findMany({
+        where: { Status_post: "CONFIRMED" },
+        select: {
+          id: true,
+          Province: true,
+          District: true,
+          Subdistrict: true,
+          Property_Name: true,
+          Price: true,
+          Image: { take: 1, select: { secure_url: true, url: true } },
+          Nearby_Landmarks: true,
+          Additional_Amenities: true,
+          createdAt: true,
+        },
+        orderBy,
+        take,
+        skip,
+      });
+      return res.json(posts);
+    }
+
+    // ===== sort = preferred =====
+    // ต้องมีพรีเฟอเรนซ์จากผู้ใช้
+    let buyerPreferences = null;
     if (userId) {
       buyerPreferences = await prisma.buyer.findUnique({
         where: { userId },
@@ -796,6 +847,28 @@ export const getHomePagePosts = async (req, res) => {
       });
     }
 
+    // ถ้าไม่มีโปรไฟล์ → fallback เป็นล่าสุด
+    if (!buyerPreferences) {
+      const posts = await prisma.propertyPost.findMany({
+        where: { Status_post: "CONFIRMED" },
+        select: {
+          id: true,
+          Province: true,
+          District: true,
+          Subdistrict: true,
+          Property_Name: true,
+          Price: true,
+          Image: { take: 1, select: { secure_url: true, url: true } },
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take,
+        skip,
+      });
+      return res.json(posts);
+    }
+
+    // ดึงก้อนใหญ่ก่อน แล้ว sort ด้วยคะแนน
     const allPosts = await prisma.propertyPost.findMany({
       where: { Status_post: "CONFIRMED" },
       select: {
@@ -819,12 +892,11 @@ export const getHomePagePosts = async (req, res) => {
         Image: { take: 1, select: { secure_url: true, url: true } },
         Nearby_Landmarks: true,
         Additional_Amenities: true,
+        createdAt: true,
       },
-      orderBy: { createdAt: "desc" },
-      take: 100,
+      orderBy: { createdAt: "desc" }, // ใช้เป็น tie-breaker
+      take: 500,
     });
-
-    if (!buyerPreferences) return res.json(allPosts);
 
     const score = (post, prefs) => {
       let s = 0;
@@ -850,10 +922,12 @@ export const getHomePagePosts = async (req, res) => {
       return s;
     };
 
-    allPosts.sort(
+    const sorted = allPosts.sort(
       (a, b) => score(b, buyerPreferences) - score(a, buyerPreferences)
     );
-    res.json(allPosts);
+
+    const sliced = sorted.slice(skip, skip + take);
+    return res.json(sliced);
   } catch (err) {
     console.error("getHomePagePosts error:", err);
     res.status(500).json({ message: "Server Error" });
@@ -868,13 +942,12 @@ export const getallNamepropertyPost = async (req, res) => {
       },
       select: {
         id: true,
-        Property_Name: true
-      }
-
-    })
+        Property_Name: true,
+      },
+    });
     res.status(200).json(posts);
   } catch (err) {
     console.error("Error fetching property post names:", err);
     res.status(500).json({ message: "Server Error", error: err.message });
   }
-}
+};
