@@ -1262,7 +1262,7 @@ export const createBooking = async (req, res) => {
       },
       { timeout: 10000 }
     );
-    
+
     // 5. (เดิม) ลบไฟล์ออกจาก Cloudinary *หลังจาก* ที่ Transaction สำเร็จ
     if (documentsToDelete && documentsToDelete.length > 0) {
       const publicIds = documentsToDelete
@@ -1706,6 +1706,102 @@ export const searchFilterDateTimeSlot = async (req, res) => {
   }
 };
 
+export const confirmPurchaseByBuyer = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { userId, First_name } = req.session.user; // นี่คือ ID ของผู้ซื้อที่ล็อกอิน
+
+    // 1. ค้นหาการจอง (Booking)
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        Buyer: { select: { userId: true } },
+        Seller: { select: { userId: true } }, // ⭐️ ต้องมี เพื่อส่ง Notification
+        propertyUnit: { include: { propertyPost: true } }, // ⭐️ ต้องมี เพื่ออัปเดตยูนิตและโพสต์
+      },
+    });
+
+    // --- 2. การตรวจสอบสิทธิ์ และสถานะ ---
+    if (!booking) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลการจอง" });
+    }
+
+    // (สำคัญ) ⭐️ ตรวจสอบว่าคนที่กด คือ "ผู้ซื้อ" ตัวจริงของการจองนี้
+    if (booking.Buyer.userId !== userId) {
+      return res
+        .status(403)
+        .json({ message: "คุณไม่มีสิทธิ์ยืนยันการจองนี้" });
+    }
+
+    // (สำคัญ) ⭐️ ตรวจสอบสถานะปัจจุบัน
+    if (booking.bookingStatus === "COMPLETED") {
+      return res.status(409).json({ message: "การจองนี้เสร็จสมบูรณ์แล้ว" });
+    }
+    // (สมมติว่า) ผู้ซื้อจะกดยืนยันได้ต่อเมื่อสถานะเป็น 'CONFIRMED' (นัดหมายแล้ว)
+    if (booking.bookingStatus !== "CONFIRMED") {
+      return res.status(400).json({ message: "การจองนี้ไม่อยู่ในสถานะที่สามารถยืนยันได้" });
+    }
+
+    // 3. ตรวจสอบยูนิต (Unit)
+    const unitToUpdate = booking.propertyUnit;
+    if (!unitToUpdate) {
+      return res.status(404).json({ message: "ไม่พบยูนิตที่เชื่อมโยงกับการจองนี้" });
+    }
+    if (unitToUpdate.Status === "SOLD") {
+      return res.status(409).json({ message: "ยูนิตนี้ถูกขายไปแล้ว (โดยคนอื่น)" });
+    }
+    const postToUpdate = unitToUpdate.propertyPost;
+    const newPostStatus = (postToUpdate.NumberOfUnits - 1) <= 0 ? "SOLD_OUT" : postToUpdate.Status_post;
+
+    // --- 4. ⭐️ เริ่ม Transaction (การดำเนินการทั้งหมด) ---
+    const [updatedUnit, updatedPost, updatedBooking] = await prisma.$transaction([
+
+      // 1. (ตามที่คุณต้องการ) ⭐️ อัปเดต PropertyUnit เป็น "SOLD"
+      prisma.propertyUnit.update({
+        where: { id: unitToUpdate.id },
+        data: { Status: "SOLD" }
+      }),
+
+      // 2. (แนะนำ) อัปเดต PropertyPost (ลดจำนวนยูนิต, เปลี่ยนสถานะถ้าหมด)
+      prisma.propertyPost.update({
+        where: { id: postToUpdate.id },
+        data: {
+          NumberOfUnits: { decrement: 1 },
+          Status_post: newPostStatus
+        }
+      }),
+
+      // 3. อัปเดต Booking เป็น "COMPLETED"
+      prisma.booking.update({
+        where: { id: bookingId },
+        data: { bookingStatus: "COMPLETED" }
+      }),
+
+      // 4. (แนะนำ) ⭐️ สร้าง Notification แจ้งเตือน "ผู้ขาย" (Seller)
+      prisma.notification.create({
+        data: {
+          userId: booking.Seller.userId, // ส่งหาผู้ขาย
+          referenceId: bookingId,
+          Title: "ผู้ซื้อยืนยันการซื้อแล้ว (ปิดการขาย)",
+          Message: `คุณ ${First_name} (ผู้ซื้อ) ได้ยืนยันการซื้อยูนิต #${unitToUpdate.Unit_Number} แล้ว`,
+          Status: "UNREAD",
+          relatedProcess: "BOOKING_COMPLETED",
+        },
+      }),
+    ]);
+
+    // --- 5. ส่งผลลัพธ์กลับ ---
+    res.status(200).json({
+      message: "ยืนยันการซื้อสำเร็จ! ยูนิตนี้ถูกทำเครื่องหมายว่าขายแล้ว",
+      booking: updatedBooking,
+      unit: updatedUnit,
+    });
+
+  } catch (err) {
+    console.error("Error confirming purchase by buyer:", err);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในระบบ" });
+  }
+};
 /*
 GET /api/user → ดูผู้ใช้ทั้งหมด
 GET /api/user/:id → ดูผู้ใช้ตาม ID

@@ -800,6 +800,17 @@ export const getHomePagePosts = async (req, res) => {
       where: { Status_post: "CONFIRMED" },
       select: {
         id: true,
+
+        Deposit_Amount: true,// สำหรับ 'deposit'
+        Usable_Area: true,  // สำหรับ 'size'
+        Bedrooms: true,  // สำหรับ 'badroom'
+        Bathroom: true,   // สำหรับ 'bathroom'
+        Category: {
+          select: {
+            name: true
+          }
+        },
+        categoryId: true,
         Province: true,
         District: true,
         Subdistrict: true,
@@ -852,8 +863,8 @@ export const getHomePagePosts = async (req, res) => {
 export const getallNamepropertyPost = async (req, res) => {
   try {
     const posts = await prisma.propertyPost.findMany({
-      where:{
-        Status_post:"CONFIRMED",
+      where: {
+        Status_post: "CONFIRMED",
       },
       select: {
         id: true,

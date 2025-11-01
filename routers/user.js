@@ -46,6 +46,7 @@ import {
   uploadFinalSlip,
   confirmedSlipBySeller,
   searchFilterDateTimeSlot,
+  confirmPurchaseByBuyer
 } from "../controllers/user.js";
 
 import {
@@ -158,7 +159,7 @@ router.patch(
 router.post(
   "/document",
   isAuthenticated,
-  uploadDocument.array("documents", 3), 
+  uploadDocument.array("documents", 3),
   useruploadDocument
 );
 
@@ -211,5 +212,7 @@ router.post("/create/payment", isAuthenticated, createStripePaymentIntent);
 //   bodyParser.raw({ type: "application/json" }),
 //   handleStripeWebhook
 // );
+
+router.post("/confirmed/booking/", isAuthenticated, confirmPurchaseByBuyer);
 
 export default router;
