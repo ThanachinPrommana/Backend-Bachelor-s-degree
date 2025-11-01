@@ -3,18 +3,26 @@ import prisma from "../config/prisma.js";
 export const getAvailableSlotsForPost = async (req, res) => {
   try {
     const { postId } = req.params;
-    if (!postId) {
-      return res.status(400).json({ message: "Post ID is required" });
+    const sessionUser = req.session.user.userId;
+
+    console.log("Session User:", sessionUser);
+    if (!sessionUser) {
+      return res.status(401).json({ message: "กรุณาเข้าสู่ระบบก่อน" });
     }
+
+    if (!postId) {
+      return res.status(400).json({ message: "ไม่เตอไอดีโพสต์" });
+    }
+
 
     // 1) ตรวจว่ามีโพสต์นี้จริงไหม
     const post = await prisma.propertyPost.findUnique({
       where: { id: postId },
       select: { id: true },
     });
-    
+
     if (!post) {
-      return res.status(404).json({ message: "Post not found" });
+      return res.status(404).json({ message: "ไม่เจอโพสต์" });
     }
 
     // 2) ตัวเลือก pagination เบื้องต้น ?page, ?limit
@@ -24,13 +32,19 @@ export const getAvailableSlotsForPost = async (req, res) => {
 
     // 3) ดึงเฉพาะ slot ที่ยังว่าง และยังเป็นอนาคต
     const now = new Date();
+    const commonWhere = {
+      postId,
+      isBooked: false,
+      startTime: { gt: now }, // เฉพาะอนาคต
+      DocumentUpload: {       // ⭐️ (เพิ่ม) กรองว่าเอกสารต้องเป็นของผู้ใช้คนนี้
+        userId: sessionUser
+      }
+    };
     const [items, total] = await Promise.all([
       prisma.dateTimeSlot.findMany({
-        where: {
-          postId,
-          isBooked: false,
-          startTime: { gt: now }, // เฉพาะอนาคต
-        },
+        where:
+          commonWhere
+        ,
         orderBy: { startTime: "asc" },
         skip,
         take: limit,
@@ -41,10 +55,11 @@ export const getAvailableSlotsForPost = async (req, res) => {
           isBooked: true,
           sellerId: true,
           postId: true,
+          documentUploadId: true
         },
       }),
       prisma.dateTimeSlot.count({
-        where: { postId, isBooked: false, startTime: { gt: now } },
+        where: commonWhere
       }),
     ]);
 
