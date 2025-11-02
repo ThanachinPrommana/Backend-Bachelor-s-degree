@@ -403,8 +403,8 @@ export const searchFilters = async (req, res) => {
       sort === "priceAsc"
         ? { Price: "asc" }
         : sort === "priceDesc"
-        ? { Price: "desc" }
-        : { createdAt: "desc" }; // latest (ดีฟอลต์)
+          ? { Price: "desc" }
+          : { createdAt: "desc" }; // latest (ดีฟอลต์)
 
     const [posts, total] = await prisma.$transaction([
       prisma.propertyPost.findMany({
@@ -494,7 +494,27 @@ export const getPost = async (req, res) => {
         Link_line: true,
         Link_facbook: true,
 
-        user: { select: { First_name: true, Last_name: true, image: true } },
+        user: {
+          select: {
+            First_name: true,
+            Last_name: true,
+            image: true,
+
+            Buyer: {
+              select: {
+                National_ID: true,
+                Reg_HouseNo: true,
+                Reg_Village: true,
+                Reg_Alley: true,
+                Reg_Road: true,
+                Reg_Subdistrict: true,
+                Reg_District: true,
+                Reg_Province: true,
+              }
+            }
+
+          }
+        },
         seller: { select: { Status: true } },
         Phone: true,
         Other_related_expenses: true,
@@ -536,8 +556,8 @@ export const removepost = async (req, res) => {
         : Promise.resolve(),
       videoPublicIds.length
         ? cloudinary.api.delete_resources(videoPublicIds, {
-            resource_type: "video",
-          })
+          resource_type: "video",
+        })
         : Promise.resolve(),
     ]);
 
@@ -743,8 +763,8 @@ export const updatePost = async (req, res) => {
         oldVideos.map((v) =>
           v.public_id
             ? cloudinary.uploader.destroy(v.public_id, {
-                resource_type: "video",
-              })
+              resource_type: "video",
+            })
             : Promise.resolve()
         )
       );
@@ -807,8 +827,8 @@ export const getHomePagePosts = async (req, res) => {
         sort === "priceAsc"
           ? { Price: "asc" }
           : sort === "priceDesc"
-          ? { Price: "desc" }
-          : { createdAt: "desc" }; // latest
+            ? { Price: "desc" }
+            : { createdAt: "desc" }; // latest
 
       const posts = await prisma.propertyPost.findMany({
         where: { Status_post: "CONFIRMED" },

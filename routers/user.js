@@ -213,6 +213,6 @@ router.post("/create/payment", isAuthenticated, createStripePaymentIntent);
 //   handleStripeWebhook
 // );
 
-router.post("/confirmed/booking/", isAuthenticated, confirmPurchaseByBuyer);
+router.post("/confirmed/booking/:bookingId", isAuthenticated, confirmPurchaseByBuyer);
 
 export default router;

@@ -9,6 +9,167 @@ const categories = [
 ];
 
 
+const imagePost = [
+  [
+    {
+      "idx": 0,
+      "id": "Osl1XnjYgd8tp8xdkE1HE8H1",
+      "asset_id": null,
+      "public_id": "property_images/rko34drdjsix33twrmut",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761641747/property_images/xmlh6qv8zwed7ylqyrec.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761641747/property_images/xmlh6qv8zwed7ylqyrec.jpg",
+      "propertyPostId": "cmh7f5uks0008w2ugskyopq9j",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 1,
+      "id": "u9q7XkCeZN2teUrZEf0HbgkU",
+      "asset_id": null,
+      "public_id": "property_images/h5mh6sjwo2v8bmsvaict",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761546108/property_images/p5vsfa2wphlhaykyag4s.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761546108/property_images/p5vsfa2wphlhaykyag4s.jpg",
+      "propertyPostId": "cmh8qdw6f0001w2po7peowlql",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 2,
+      "id": "aMOdh74grAVZaFA7eky0lRA8",
+      "asset_id": null,
+      "public_id": "property_images/cxpdroxuuzbwoftb2uqe",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761544956/property_images/cno6u0o5u7ksfgud0zzc.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761544956/property_images/cno6u0o5u7ksfgud0zzc.jpg",
+      "propertyPostId": "cmh8r2lxd000fw2poy6tcdy0w",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 3,
+      "id": "SzlGdkvUbV2XtaDP60l2gAuF",
+      "asset_id": null,
+      "public_id": "property_images/g7fsfnef3ghbrchre35o",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761547503/property_images/ihjimwxqmrabtwp7ivit.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761547503/property_images/ihjimwxqmrabtwp7ivit.jpg",
+      "propertyPostId": "cmh8rztl9000tw2poooqe7d3p",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 4,
+      "id": "BEwm5TQyq8nKKe3RRz6p7o4Y",
+      "asset_id": null,
+      "public_id": "property_images/dgbjf4lzald5iisoe6p4",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761548579/property_images/w0sx3dkg7g5ooekh9py8.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761548579/property_images/w0sx3dkg7g5ooekh9py8.jpg",
+      "propertyPostId": "cmh8sjm4c0017w2podcxyz14i",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 5,
+      "id": "4LLZZqIa49nnrzSSXHQQiUH8",
+      "asset_id": null,
+      "public_id": "property_images/dgbjf4lzald5iisoe6p4",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1762019754/property_images/h5mh6sjwo2v8bmsvaict.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1762019754/property_images/h5mh6sjwo2v8bmsvaict.jpg",
+      "propertyPostId": "cmh8tpr0h001lw2pohblta6o5",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 6,
+      "id": "UE38K2ciG7XAlgjykC99dyYU",
+      "asset_id": null,
+      "public_id": "property_images/dgbjf4lzald5iisoe6p4",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1762019894/property_images/gtgfjpkwtu76zcntumso.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1762019894/property_images/gtgfjpkwtu76zcntumso.jpg",
+      "propertyPostId": "cmh8u6hdi001zw2pokp90fgb9",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 7,
+      "id": "toVQyYGq133M1pwUri0v2nUw",
+      "asset_id": null,
+      "public_id": "property_images/dgbjf4lzald5iisoe6p4",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761554815/property_images/axqcxvwfyyghxhneipoz.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761554815/property_images/axqcxvwfyyghxhneipoz.jpg",
+      "propertyPostId": "cmh8uuv82002dw2porligkmsx",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 8,
+      "id": "iG82HSTapR9kVWmZ5VqFsVtf",
+      "asset_id": null,
+      "public_id": "property_images/dgbjf4lzald5iisoe6p4",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761552465/property_images/vealu4cmxwut5yiiidh9.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761552465/property_images/vealu4cmxwut5yiiidh9.jpg",
+      "propertyPostId": "cmh8w96xo002rw2ponldx0pvt",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 9,
+      "id": "qwhEPt0uCP7BjYVe5nwv2T9p",
+      "asset_id": null,
+      "public_id": "property_images/dgbjf4lzald5iisoe6p4",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761581610/property_images/hv6sgbcz5so5qacaychb.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761581610/property_images/hv6sgbcz5so5qacaychb.jpg",
+      "propertyPostId": "cmh9c823t0000w278trkuxxoe",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 10,
+      "id": "r3b8ZSqb3If2LosTz30Vbq7r",
+      "asset_id": null,
+      "public_id": "property_images/dgbjf4lzald5iisoe6p4",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761713416/property_images/fek10uiphsq4mizlw4vc.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761713416/property_images/fek10uiphsq4mizlw4vc.jpg",
+      "propertyPostId": "cmhbionmi000aw2ok12ly0245",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 11,
+      "id": "g68dn8K6zwSSADCIsjxh0j2u",
+      "asset_id": null,
+      "public_id": "property_images/dgbjf4lzald5iisoe6p4",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761706154/property_images/ncqiqiwbm9pmojrzfw51.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1761706154/property_images/ncqiqiwbm9pmojrzfw51.jpg",
+      "propertyPostId": "cmhbsf1de0004vk9kfe6mrd4h",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 12,
+      "id": "Yihw59zPeK1YWF1k0nLrrMZJ",
+      "asset_id": null,
+      "public_id": "property_images/dgbjf4lzald5iisoe6p4",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1762019756/property_images/dgbjf4lzald5iisoe6p4.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1762019756/property_images/dgbjf4lzald5iisoe6p4.jpg",
+      "propertyPostId": "cmhgl2hq60000w2tk5fl2ay94",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+    {
+      "idx": 13,
+      "id": "22G6h3Z80ty3MRFg0K6OV1Yw",
+      "asset_id": null,
+      "public_id": "property_images/dgbjf4lzald5iisoe6p4",
+      "url": "https://res.cloudinary.com/dytyucldy/image/upload/v1762019756/property_images/dgbjf4lzald5iisoe6p4.jpg",
+      "secure_url": "https://res.cloudinary.com/dytyucldy/image/upload/v1762019756/property_images/dgbjf4lzald5iisoe6p4.jpg",
+      "propertyPostId": "cmhgl5ht20000w2ug163ik0mp",
+      "createdAt": "2025-11-01 17:55:56.788",
+      "updatedAt": "2025-11-01 17:55:56.788"
+    },
+
+
+  ]
+]
+
 const propertyPost = [
   {
     "idx": 0,
@@ -57,7 +218,7 @@ const propertyPost = [
     "NumberOfUnits": 6,
     "Status_post": "CONFIRMED",
     "userId": "cmhgjeqk20000vkdw5uq4d8oq",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzfdya0006w2bwq5d8alc7",
     "createdAt": "2025-10-26 08:00:40.144",
     "updatedAt": "2025-10-29 09:46:58.207",
@@ -99,8 +260,8 @@ const propertyPost = [
     "floor": null,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmh7ebmu90000w2tgtucbc65c",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzfdya0006w2bwq5d8alc7",
     "createdAt": "2025-10-27 06:02:37.439",
     "updatedAt": "2025-10-27 06:02:37.439",
@@ -142,8 +303,8 @@ const propertyPost = [
     "floor": null,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmh7ebmu90000w2tgtucbc65c",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzfdya0006w2bwq5d8alc7",
     "createdAt": "2025-10-27 06:21:50.256",
     "updatedAt": "2025-10-27 06:21:50.256",
@@ -185,8 +346,8 @@ const propertyPost = [
     "floor": 2,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmh7ebmu90000w2tgtucbc65c",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzfhx70007w2bwp63cbc1w",
     "createdAt": "2025-10-27 06:47:40.137",
     "updatedAt": "2025-10-27 06:47:40.137",
@@ -228,8 +389,8 @@ const propertyPost = [
     "floor": 1,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmh7ebmu90000w2tgtucbc65c",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzfhx70007w2bwp63cbc1w",
     "createdAt": "2025-10-27 07:03:03.579",
     "updatedAt": "2025-10-27 07:03:03.579",
@@ -271,8 +432,8 @@ const propertyPost = [
     "floor": 2,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmh7ebmu90000w2tgtucbc65c",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzfov30009w2bwrxjpt7xn",
     "createdAt": "2025-10-27 07:35:49.215",
     "updatedAt": "2025-10-27 07:35:49.215",
@@ -314,8 +475,8 @@ const propertyPost = [
     "floor": 1,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmh7ebmu90000w2tgtucbc65c",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzfov30009w2bwrxjpt7xn",
     "createdAt": "2025-10-27 07:48:50.166",
     "updatedAt": "2025-10-27 07:48:50.166",
@@ -355,8 +516,8 @@ const propertyPost = [
     "floor": 2,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmh7ebmu90000w2tgtucbc65c",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzft08000aw2bwx91l68z9",
     "createdAt": "2025-10-27 08:07:47.858",
     "updatedAt": "2025-10-27 08:07:47.858",
@@ -396,8 +557,8 @@ const propertyPost = [
     "floor": 2,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmh7ebmu90000w2tgtucbc65c",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzft08000aw2bwx91l68z9",
     "createdAt": "2025-10-27 08:46:55.804",
     "updatedAt": "2025-10-27 08:46:55.804",
@@ -449,8 +610,8 @@ const propertyPost = [
     "floor": null,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmh7ebmu90000w2tgtucbc65c",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzfdya0006w2bwq5d8alc7",
     "createdAt": "2025-10-27 16:13:56.606",
     "updatedAt": "2025-10-27 16:13:56.606",
@@ -490,8 +651,8 @@ const propertyPost = [
     "floor": null,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmh7ebmu90000w2tgtucbc65c",
-    "sellerId": "cmh7ehjks0001w2uga25haifw",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzfdya0006w2bwq5d8alc7",
     "createdAt": "2025-10-29 04:50:21.142",
     "updatedAt": "2025-10-29 04:50:21.142",
@@ -540,8 +701,8 @@ const propertyPost = [
     "floor": 2,
     "NumberOfUnits": 3,
     "Status_post": "CONFIRMED",
-    "userId": "cmhbs1w7x0000vk9knbcjtu9l",
-    "sellerId": "cmhbs6vzp0003vk9kgid4n6aq",
+    "userId": "cmhgjeqk20000vkdw5uq4d8oq",
+    "sellerId": "cmhgjzf3j0001w2lggpi4993m",
     "categoryId": "cmegzfhx70007w2bwp63cbc1w",
     "createdAt": "2025-10-29 09:22:48.594",
     "updatedAt": "2025-10-29 09:22:48.594",
@@ -577,6 +738,29 @@ async function main() {
     });
   }
   console.log("Property post seeding finished.");
+
+  console.log("Start seeding image posts...");
+  // สังเกตว่าข้อมูลจริงอยู่ใน imagePost[0]
+  for (const imageData of imagePost[0]) {
+
+    // 1. ลบ 'idx' เหมือนเดิม
+    const { idx, ...dataForPrisma } = imageData;
+
+    // 2. แปลง String เป็น Date Object
+    dataForPrisma.createdAt = new Date(dataForPrisma.createdAt);
+    dataForPrisma.updatedAt = new Date(dataForPrisma.updatedAt);
+
+    // 3. ใช้ upsert กับ model ที่เก็บรูปภาพ
+    // **สำคัญ:** ตรวจสอบว่า model ใน schema.prisma ของคุณชื่ออะไร
+    // ถ้าชื่อ model คือ ImagePost, Prisma Client จะใช้ 'imagePost' (ถูกต้องตามนี้)
+    // ถ้าชื่อ model คือ Image, ต้องแก้เป็น prisma.image.upsert
+    await prisma.image.upsert({
+      where: { id: dataForPrisma.id },
+      update: dataForPrisma,
+      create: dataForPrisma,
+    });
+  }
+  console.log("Image post seeding finished.");
 }
 
 main()
