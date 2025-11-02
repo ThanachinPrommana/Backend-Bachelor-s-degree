@@ -76,7 +76,7 @@ export const approveDocument = async (req, res) => {
         data: {
           userId: updatedDocument.userId,
           Title: "เอกสารของคุณได้รับการอนุมัติแล้ว",
-          Message: `เอกสาร "${updatedDocument.DocumentName}" สำหรับโพสต์ของคุณได้รับการอนุมัติ`,
+          Message: `เอกสาร "${updatedDocument.DocumentName}" เอกสารได้รับการอนุมัติ กรุณาไปที่หน้าเอกสารเพื่อกดมัดจำ`,
           Status: "UNREAD",
           relatedProcess: "DOCUMENT_APPROVAL",
           referenceId: updatedDocument.id,
@@ -127,7 +127,7 @@ export const approveDocument = async (req, res) => {
         data: {
           userId: buyerId,
           Title: "เอกสารของคุณถูกปฏิเสธ",
-          Message: `เอกสาร "${docName}" ที่คุณส่งมาถูกปฏิเสธและยูนิตได้ถูกเปิดให้จองอีกครั้ง`,
+          Message: `เอกสาร "${docName}" ที่คุณส่งมาถูกปฏิเสธ สามารถส่งใหม่อีกครั้งได้`,
           Status: "UNREAD",
           relatedProcess: "DOCUMENT_REJECTION",
         },
