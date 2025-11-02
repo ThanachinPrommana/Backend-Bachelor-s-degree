@@ -19,15 +19,10 @@ const getSessionUserId = (req) => {
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.replace(/\/+$/, "") || "http://localhost:5173";
 
-// ตรวจเลขบัตร ปชช. 13 หลัก + checksum (inline, ไม่ต้องแยกไฟล์)
-const isThaiNationalIdValid = (id) => {
-  const s = String(id || "").replace(/\D/g, "");
-  if (!/^\d{13}$/.test(s)) return false;
-  const d = s.split("").map(Number);
-  const sum = d.slice(0, 12).reduce((acc, x, i) => acc + x * (13 - i), 0);
-  const check = (11 - (sum % 11)) % 10;
-  return check === d[12];
-};
+/** ✅ ตรวจแค่ “ตัวเลข 13 หลัก” ไม่คำนวณ checksum */
+const isThaiId13 = (id) => /^\d{13}$/.test(String(id || "").replace(/\D/g, ""));
+
+/** ใช้เพื่อ mask ตอนส่งออก (ฝั่งแสดงผล) */
 const maskThaiId = (s = "") =>
   s && s.length === 13
     ? `${s[0]}-${s.slice(1, 5)}-${s.slice(5, 10)}-${s.slice(10, 12)}-${s[12]}`
@@ -39,7 +34,13 @@ const maskThaiId = (s = "") =>
  * {
  *   First_name, Last_name, Email, Phone, Password,
  *   nationalId,
- *   regAddress: { houseNo, village, alley, road, subdistrict, district, province }
+ *   regAddress: {
+ *     houseNo,            // ✅ ต้องมี
+ *     subdistrict,        // ✅ ต้องมี
+ *     district,           // ✅ ต้องมี
+ *     province,           // ✅ ต้องมี
+ *     // village, alley, road (❌ ไม่บังคับ)
+ *   }
  * }
  */
 export const preRegister = async (req, res) => {
@@ -58,26 +59,27 @@ export const preRegister = async (req, res) => {
     if (!Password)
       return res.status(400).json({ message: "รหัสผ่านไม่ถูกต้อง" });
 
-    // ✅ บังคับข้อมูลบัตร + ที่อยู่ทะเบียนบ้าน ให้ครบตั้งแต่ขั้นนี้
+    // ✅ บังคับเลขบัตร 13 หลัก
     if (!nationalId) {
       return res.status(400).json({ message: "กรุณากรอกเลขบัตรประชาชน" });
     }
-    if (!isThaiNationalIdValid(nationalId)) {
-      return res.status(400).json({ message: "เลขบัตรประชาชนไม่ถูกต้อง" });
+    const cleanId = String(nationalId).replace(/\D/g, "");
+    if (!isThaiId13(cleanId)) {
+      return res.status(400).json({ message: "เลขบัตรประชาชนต้องมี 13 หลัก" });
     }
+
+    // ✅ บังคับเฉพาะ houseNo/subdistrict/district/province
     if (
       !regAddress ||
       !regAddress.houseNo ||
-      !regAddress.village ||
-      !regAddress.alley ||
-      !regAddress.road ||
       !regAddress.subdistrict ||
       !regAddress.district ||
       !regAddress.province
     ) {
-      return res
-        .status(400)
-        .json({ message: "กรุณากรอกที่อยู่ตามทะเบียนบ้านให้ครบ" });
+      return res.status(400).json({
+        message:
+          "กรุณากรอกที่อยู่ตามทะเบียนบ้าน: บ้านเลขที่, ตำบล, อำเภอ, จังหวัด",
+      });
     }
 
     // กัน email ซ้ำ
@@ -97,8 +99,8 @@ export const preRegister = async (req, res) => {
         First_name,
         Last_name,
         userType: "Buyer",
-        nationalId: String(nationalId).replace(/\D/g, ""),
-        regAddress, // {houseNo,...,province}
+        nationalId: cleanId, // ✅ เก็บเฉพาะตัวเลข 13 หลัก
+        regAddress, // {houseNo, subdistrict, district, province, ...optional}
       },
       process.env.SECRETKEY,
       { expiresIn: "10m" }
@@ -148,7 +150,7 @@ export const verifyandregister = async (req, res) => {
     if (!encodedToken)
       return res.status(400).json({ message: "Missing verification token" });
 
-    // ถ้าต้องการบังคับ prefs ขั้นต่ำ (ตามของเดิม)
+    // บังคับ prefs ขั้นต่ำ (ตามของเดิม)
     if (
       Monthly_Income == null ||
       Family_Size == null ||
@@ -202,7 +204,7 @@ export const verifyandregister = async (req, res) => {
         .json({ message: "Invalid Lifestyle_Preferences value" });
     }
 
-    // ✅ สร้าง User + Buyer พร้อมเลขบัตรและที่อยู่ทะเบียนบ้าน
+    // ✅ สร้าง User + Buyer พร้อมเลขบัตรและที่อยู่ทะเบียนบ้าน (field อื่น ๆ optional ได้)
     await prisma.user.create({
       data: {
         Email,
@@ -213,12 +215,12 @@ export const verifyandregister = async (req, res) => {
         userType: "Buyer",
         Buyer: {
           create: {
-            // บังคับจาก token:
+            // จาก token:
             National_ID: nationalId,
             Reg_HouseNo: regAddress?.houseNo ?? null,
-            Reg_Village: regAddress?.village ?? null,
-            Reg_Alley: regAddress?.alley ?? null,
-            Reg_Road: regAddress?.road ?? null,
+            Reg_Village: regAddress?.village ?? null, // optional
+            Reg_Alley: regAddress?.alley ?? null, // optional
+            Reg_Road: regAddress?.road ?? null, // optional
             Reg_Subdistrict: regAddress?.subdistrict ?? null,
             Reg_District: regAddress?.district ?? null,
             Reg_Province: regAddress?.province ?? null,
