@@ -6,6 +6,10 @@ import { Components } from '../componentLoader.js';
 export const propertyPostResource = {
     resource: { model: getModelByName("PropertyPost"), client: prisma },
     options: {
+        sort: {
+            sortBy: 'createdAt', // เรียงตาม field 'createdAt'
+            direction: 'desc',   // เรียงจากมากไปน้อย (ล่าสุดอยู่บน)
+        },
         navigation: "โพสต์",
         name: "โพสต์ขายบ้าน",
         // perPage: 3,
@@ -130,6 +134,7 @@ export const propertyPostResource = {
             },
 
             list: {
+                perPage: 100,
                 component: Components.PropertyCardList,
                 // settings: {
                 //     perPage: 2, // บังคับให้แสดง 2 รายการต่อหน้า

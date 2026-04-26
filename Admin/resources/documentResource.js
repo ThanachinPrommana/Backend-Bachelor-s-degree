@@ -6,6 +6,10 @@ import { Components } from "../componentLoader.js";
 export const documentResource = {
     resource: { model: getModelByName("DocumentUpload"), client: prisma },
     options: {
+        sort: {
+            sortBy: 'createdAt', // เรียงตาม field 'createdAt'
+            direction: 'desc',   // เรียงจากมากไปน้อย (ล่าสุดอยู่บน)
+        },
         navigation: "เอกสาร",
         name: "เอกสารที่อัปโหลด",
         listProperties: [

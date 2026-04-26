@@ -4,8 +4,8 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL_POSTGRES_SUPABASE")
-  directUrl = env("DATABASE_URL_MIGRATE")
+  url       = env("DATABASE_URL_MIGRATE")
+  directUrl = env("DATABASE_URL_POSTGRES_SUPABASE")
 }
 
 /// *

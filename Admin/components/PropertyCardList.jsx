@@ -1,7 +1,8 @@
 // server/Admin/components/PropertyCardList.jsx
-import React, { useState } from 'react';
-import { useRecords } from 'adminjs';
-import { Box, H2, H5, Loader, Placeholder, Button, Badge, Label, Text } from '@adminjs/design-system';
+import React, { useState, useEffect } from 'react';
+import { useRecords } from 'adminjs'; // <-- From adminjs
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Box, H2, H5, Loader, Placeholder, Button, Badge, Label, Text, Pagination } from '@adminjs/design-system';
 // Helper Functions
 const isEmptyValue = (v) => v === null || v === undefined || String(v).trim() === "";
 const displayValue = (v, fallback = "N/A") => (isEmptyValue(v) ? fallback : v);
@@ -27,9 +28,47 @@ const Card = ({ children }) => (
 // const Label = ({ children }) => <Box color="grey60" fontSize="sm">{children}</Box>;
 
 const PropertyCardList = () => {
-    const { records, loading, error } = useRecords('PropertyPost');
+    const {
+        records,
+        loading,
+        error,
+        total,
+        perPage,
+        page,
+        direction,
+        sortBy
+    } = useRecords('PropertyPost');
     const [expanded, setExpanded] = useState({});
 
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    useEffect(() => {
+        const searchParams = new URLSearchParams(location.search);
+
+        // ถ้าใน URL ยังไม่มี 'pageSize' (ค่า default คือ 10)
+        // และเรามี 'total' (16)
+        if (!searchParams.has('pageSize') && total > 0) {
+            // สั่งให้มันใช้ 100 รายการต่อหน้า
+            searchParams.set('pageSize', '100');
+
+            // สั่งเปลี่ยน URL (เช่น /admin/.../list?pageSize=100)
+            // การเปลี่ยน URL นี้จะบังคับให้ useRecords โหลดข้อมูลใหม่
+            navigate({ search: searchParams.toString() });
+        }
+    }, [total, perPage, location.search, navigate]);
+
+    const searchParams = new URLSearchParams(location.search);
+    if (!searchParams.has('pageSize') && total > 0) {
+        // ถ้ารู้ว่ามี 16 แต่ยังไม่ได้สั่ง pageSize=100 ให้รอโหลดก่อน
+        return <Box p="lg"><Loader /></Box>;
+    }
+    console.log('--- DEBUG: useRecords (FRONTEND) ---');
+    console.log('Total from hook:', total);
+    console.log('Per Page from hook:', perPage);
+    console.log('Records in hook:', records?.length);
+    console.log('Loading:', loading);
+    console.log('------------------------------------');
 
     if (loading) return <Box p="lg"><Loader /></Box>;
     if (error) return <Box p="lg"><Placeholder><H5>เกิดข้อผิดพลาดในการโหลดข้อมูลโพสต์</H5></Placeholder></Box>;
@@ -166,10 +205,30 @@ const PropertyCardList = () => {
                                     <Button as="a" href={`/admin/resources/PropertyPost/records/${id}/show`} size="sm">ดู</Button>
                                     <Button as="a" href={`/admin/resources/PropertyPost/records/${id}/edit`} variant="primary" size="sm">แก้ไข</Button>
                                 </Box>
+
                             </Box>
+
                         </Card>
                     );
                 })}
+            </Box>
+            <Box mt="xl" display="flex" justifyContent="center">
+                <Pagination
+                    page={page}
+                    perPage={perPage}
+                    total={total}
+                    onChange={(pageNumber) => {
+                        const search = new URLSearchParams(window.location.search);
+                        search.set('page', String(pageNumber));
+
+                        // คงค่า pageSize ที่เราตั้งไว้ (100)
+                        if (!search.has('pageSize')) search.set('pageSize', '100');
+                        if (sortBy) search.set('sortBy', sortBy);
+                        if (direction) search.set('direction', direction);
+
+                        navigate({ search: search.toString() });
+                    }}
+                />
             </Box>
 
         </Box>

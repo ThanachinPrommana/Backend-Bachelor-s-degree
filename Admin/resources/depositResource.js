@@ -6,6 +6,10 @@ import { Components } from "../componentLoader.js";
 export const depositResource = {
     resource: { model: getModelByName("Deposit"), client: prisma },
     options: {
+        sort: {
+            sortBy: 'createdAt', // เรียงตาม field 'createdAt'
+            direction: 'desc',   // เรียงจากมากไปน้อย (ล่าสุดอยู่บน)
+        },
         navigation: "โพสต์",
         name: "เงินมัดจำ",
 

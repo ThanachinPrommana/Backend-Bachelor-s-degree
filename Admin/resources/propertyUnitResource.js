@@ -6,6 +6,7 @@ import { Components } from "../componentLoader.js";
 export const propertyUnitResource = {
     resource: { model: getModelByName("PropertyUnit"), client: prisma },
     options: {
+        
         navigation: "โพสต์",
         name: "ยูนิต / เลขที่บ้าน",
         listProperties: [

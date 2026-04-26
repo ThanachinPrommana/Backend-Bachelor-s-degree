@@ -1,7 +1,8 @@
 // server/Admin/components/SellerCardList.jsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useRecords } from 'adminjs';
-import { Box, H2, Loader, Placeholder, H5, Button } from '@adminjs/design-system';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Box, H2, Loader, Placeholder, H5, Button, Pagination } from '@adminjs/design-system';
 
 // Helper Functions
 const isEmptyValue = (v) => v === null || v === undefined || String(v).trim() === "";
@@ -22,7 +23,34 @@ const Card = ({ children }) => (
 );
 
 const SellerCardList = () => {
-  const { records, loading, error } = useRecords('Seller');
+  const {
+    records,
+    loading,
+    error,
+    total,
+    perPage,
+    page,
+    direction,
+    sortBy
+  } = useRecords('Seller');
+
+
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    // ถ้ายังไม่มี pageSize ใน URL และมี total (รู้จำนวนทั้งหมดแล้ว)
+    if (!searchParams.has('pageSize') && total > 0) {
+      searchParams.set('pageSize', '100'); // บังคับโหลด 100 รายการ
+      navigate({ search: searchParams.toString() });
+    }
+  }, [total, perPage, location.search, navigate]); // <-- ใช้ navigate
+
+  const searchParams = new URLSearchParams(location.search);
+  if (!searchParams.has('pageSize') && total > 0) {
+    return <Box p="lg"><Loader /></Box>;
+  }
 
   if (loading) return <Box p="lg"><Loader /></Box>;
   if (error) return <Box p="lg"><Placeholder><H5>เกิดข้อผิดพลาด</H5><p>ไม่สามารถดึงข้อมูลผู้ขายได้</p></Placeholder></Box>;
@@ -33,7 +61,7 @@ const SellerCardList = () => {
       <Box
         display="grid"
         gridTemplateColumns={['1fr', 'repeat(auto-fill, minmax(340px, 1fr))']}
-        style={{ gap: "20px" }} 
+        style={{ gap: "20px" }}
       >
         {records.map((r) => {
           const params = r.params ?? {};
@@ -42,7 +70,7 @@ const SellerCardList = () => {
 
           const fullName = `${displayValue(userParams.First_name, '')} ${displayValue(userParams.Last_name, '')}`.trim() || "ไม่มีชื่อ";
           const imageUrl = params.nationalIdImage || null;
-          
+
           const companyName = displayValue(params.Company_Name);
           const license = displayValue(params.RealEstate_License);
           const status = displayValue(params.Status);
@@ -111,6 +139,24 @@ const SellerCardList = () => {
             </Card>
           );
         })}
+      </Box>
+      <Box mt="xl" display="flex" justifyContent="center">
+        <Pagination
+          page={page}
+          perPage={perPage}
+          total={total}
+          onChange={(pageNumber) => {
+            const search = new URLSearchParams(window.location.search);
+            search.set('page', String(pageNumber));
+            // คงค่า pageSize ที่เราตั้งไว้ (100)
+            if (!search.has('pageSize')) search.set('pageSize', '100');
+            if (sortBy) search.set('sortBy', sortBy);
+            if (direction) search.set('direction', direction);
+
+            // ใช้ navigate (v6)
+            navigate({ search: search.toString() });
+          }}
+        />
       </Box>
     </Box>
   );

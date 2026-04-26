@@ -72,4 +72,8 @@ npm i lodash
 npm i rc-slider
 npm i numeral
 npm install moment
+
+stripe listen --forward-to localhost:8200/api/stripe/webhook
 --------------------------
+
+

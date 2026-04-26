@@ -719,48 +719,50 @@ async function main() {
       create: category,
     });
   }
-  console.log("Seeding finished.");
-  console.log("Start seeding property posts...");
-  for (const postData of propertyPost) {
+  console.log("Seeding categories finished.");
 
-    // (สำคัญ) 1. ลบ 'idx' ที่ไม่มีใน Model
-    const { idx, ...dataForPrisma } = postData;
+  
+  // console.log("Start seeding property posts...");
+  // for (const postData of propertyPost) {
 
-    // (สำคัญ) 2. แปลง String เป็น Date Object
-    dataForPrisma.createdAt = new Date(dataForPrisma.createdAt);
-    dataForPrisma.updatedAt = new Date(dataForPrisma.updatedAt);
+  //   // (สำคัญ) 1. ลบ 'idx' ที่ไม่มีใน Model
+  //   const { idx, ...dataForPrisma } = postData;
 
-    // 3. ใช้ upsert (เหมือน categories)
-    await prisma.propertyPost.upsert({
-      where: { id: dataForPrisma.id },
-      update: dataForPrisma, // อัปเดตข้อมูลเป็นของใหม่
-      create: dataForPrisma, // สร้างใหม่ถ้ายังไม่มี
-    });
-  }
-  console.log("Property post seeding finished.");
+  //   // (สำคัญ) 2. แปลง String เป็น Date Object
+  //   dataForPrisma.createdAt = new Date(dataForPrisma.createdAt);
+  //   dataForPrisma.updatedAt = new Date(dataForPrisma.updatedAt);
 
-  console.log("Start seeding image posts...");
-  // สังเกตว่าข้อมูลจริงอยู่ใน imagePost[0]
-  for (const imageData of imagePost[0]) {
+  //   // 3. ใช้ upsert (เหมือน categories)
+  //   await prisma.propertyPost.upsert({
+  //     where: { id: dataForPrisma.id },
+  //     update: dataForPrisma, // อัปเดตข้อมูลเป็นของใหม่
+  //     create: dataForPrisma, // สร้างใหม่ถ้ายังไม่มี
+  //   });
+  // }
+  // console.log("Property post seeding finished.");
 
-    // 1. ลบ 'idx' เหมือนเดิม
-    const { idx, ...dataForPrisma } = imageData;
+  // console.log("Start seeding image posts...");
+  // // สังเกตว่าข้อมูลจริงอยู่ใน imagePost[0]
+  // for (const imageData of imagePost[0]) {
 
-    // 2. แปลง String เป็น Date Object
-    dataForPrisma.createdAt = new Date(dataForPrisma.createdAt);
-    dataForPrisma.updatedAt = new Date(dataForPrisma.updatedAt);
+  //   // 1. ลบ 'idx' เหมือนเดิม
+  //   const { idx, ...dataForPrisma } = imageData;
 
-    // 3. ใช้ upsert กับ model ที่เก็บรูปภาพ
-    // **สำคัญ:** ตรวจสอบว่า model ใน schema.prisma ของคุณชื่ออะไร
-    // ถ้าชื่อ model คือ ImagePost, Prisma Client จะใช้ 'imagePost' (ถูกต้องตามนี้)
-    // ถ้าชื่อ model คือ Image, ต้องแก้เป็น prisma.image.upsert
-    await prisma.image.upsert({
-      where: { id: dataForPrisma.id },
-      update: dataForPrisma,
-      create: dataForPrisma,
-    });
-  }
-  console.log("Image post seeding finished.");
+  //   // 2. แปลง String เป็น Date Object
+  //   dataForPrisma.createdAt = new Date(dataForPrisma.createdAt);
+  //   dataForPrisma.updatedAt = new Date(dataForPrisma.updatedAt);
+
+  //   // 3. ใช้ upsert กับ model ที่เก็บรูปภาพ
+  //   // **สำคัญ:** ตรวจสอบว่า model ใน schema.prisma ของคุณชื่ออะไร
+  //   // ถ้าชื่อ model คือ ImagePost, Prisma Client จะใช้ 'imagePost' (ถูกต้องตามนี้)
+  //   // ถ้าชื่อ model คือ Image, ต้องแก้เป็น prisma.image.upsert
+  //   await prisma.image.upsert({
+  //     where: { id: dataForPrisma.id },
+  //     update: dataForPrisma,
+  //     create: dataForPrisma,
+  //   });
+  // }
+  // console.log("Image post seeding finished.");
 }
 
 main()

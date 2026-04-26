@@ -6,6 +6,10 @@ import { Components } from "../componentLoader.js";
 export const paymentResource = {
     resource: { model: getModelByName("Payment"), client: prisma },
     options: {
+        sort: {
+            sortBy: 'createdAt', // เรียงตาม field 'createdAt'
+            direction: 'desc',   // เรียงจากมากไปน้อย (ล่าสุดอยู่บน)
+        },
         navigation: "ชำระเงิน",
         name: "ข้อมูลการชำระเงิน",
         listProperties: [

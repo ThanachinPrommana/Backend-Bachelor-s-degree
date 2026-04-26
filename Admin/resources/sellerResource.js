@@ -6,6 +6,10 @@ import { Components } from "../componentLoader.js";
 export const sellerResource = {
     resource: { model: getModelByName("Seller"), client: prisma },
     options: {
+        sort: {
+            sortBy: 'createdAt', // เรียงตาม field 'createdAt'
+            direction: 'desc',   // เรียงจากมากไปน้อย (ล่าสุดอยู่บน)
+        },
         // ⚠️ หมายเหตุ: ชื่อไฟล์ของคุณคือ userResource.js แต่โค้ดข้างในเป็น sellerResource
         // ผมจะยึดตามโค้ดข้างในว่าเป็น sellerResource นะครับ
         navigation: "ผู้ใช้",
@@ -52,6 +56,7 @@ export const sellerResource = {
             },
             list: {
                 component: Components.SellerCardList,
+                perPage: 100,
             },
             edit: {
                 before: async (request, context) => {
