@@ -14,7 +14,7 @@ export const createStripePaymentIntent = async (req, res) => {
   try {
     // 1. ดึงข้อมูลที่จำเป็นทั้งหมดออกมาที่จุดเดียว
     const { postId, unitId } = req.body || {};
-    const buyerId = req.session?.user?.userId;
+    const buyerId = req.user?.id || req.session?.user?.userId || req.session?.user?.id;
 
     // 2. ตรวจสอบข้อมูลทันที
     if (!buyerId) {

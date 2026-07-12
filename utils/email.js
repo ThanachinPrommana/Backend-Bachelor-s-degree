@@ -13,6 +13,7 @@ export const sendResetEmail = async (to, link) => {
   }
 });
   await transporter.sendMail({
+    from: process.env.EMAIL_USER,
     to,
     subject: 'คำขอรีเซ็ตรหัสผ่าน (Yuu Yenn Property)',
     html:createResetPasswordTemplate(link)
@@ -28,6 +29,7 @@ export const verifyemail = async (to, link) => {
     }
   })
   await transporter.sendMail({
+    from: process.env.EMAIL_USER,
     to,
     subject: "Please verify your email",
     html:getVerifyEmailHtml(link)
