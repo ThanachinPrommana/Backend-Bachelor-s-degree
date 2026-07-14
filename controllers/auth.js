@@ -109,8 +109,15 @@ export const preRegister = async (req, res) => {
     const encodedToken = Buffer.from(token).toString("base64");
     const link = `${FRONTEND_URL}/verifyemail?token=${encodedToken}`;
     console.log("preRegister token(base64):", encodedToken);
-    await verifyemail(Email, link);
-    return res.json({ message: "ยืนยันอีเมล ได้ถูกส่งไปแล้ว" });
+    
+    // ❌ ปิดการส่งอีเมลผ่าน Nodemailer เนื่องจากปัญหา Render Block SMTP
+    // await verifyemail(Email, link); 
+    
+    // ✅ คืนค่า token ให้ Frontend นำไป Redirect เอง
+    return res.json({ 
+      message: "ข้ามการส่งอีเมล จำลองการส่งสำเร็จ",
+      token: encodedToken
+    });
   } catch (err) {
     console.error("preRegister error:", err);
     return res.status(500).json({ message: "Server error" });
