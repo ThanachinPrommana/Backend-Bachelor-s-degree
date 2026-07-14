@@ -48,12 +48,19 @@ app.use(express.urlencoded({ extended: true }));
 const sessionOptions = {
   secret: process.env.SESSION_SECRET || "some-strong-secret",
   resave: false,
-  saveUninitialized: true,
-  cookie: { maxAge: 2 * 60 * 60 * 1000, httpOnly: true, secure: false, sameSite: 'lax' }
+  saveUninitialized: false, // เปลี่ยนเป็น false ดีกว่าเพื่อลดภาระ memory
+  cookie: { 
+    maxAge: 2 * 60 * 60 * 1000, 
+    httpOnly: true, 
+    secure: false, 
+    sameSite: 'lax' 
+  }
 };
 
 if (IS_PRODUCTION) {
   app.set('trust proxy', 1);
+  sessionOptions.cookie.secure = true;    // ต้องเป็น true ถึงจะใช้ sameSite: none ได้ (ต้องมี HTTPS)
+  sessionOptions.cookie.sameSite = 'none'; // ต้องเป็น none สำหรับ Vercel -> Render (Cross-Origin)
 }
 app.use(session(sessionOptions));
 
