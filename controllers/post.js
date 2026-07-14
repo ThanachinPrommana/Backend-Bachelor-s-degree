@@ -1,6 +1,7 @@
 // controllers/post.js
 import prisma from "../config/prisma.js";
 import cloudinary from "../utils/cloudinary.js";
+import fs from "fs";
 import {
   toIntOrNull,
   toFloatOrNull,
@@ -37,23 +38,159 @@ const toFloatOrZero = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/** CloudinaryStorage pass-through mapper
- *  - Multer-Storage-Cloudinary เติม:
- *    file.path     = secure_url (https://...)
- *    file.filename = public_id
- *    file.mimetype = image/* | video/*
+/**
+ * Phase 3 – diskStorage mapper
+ * Multer-diskStorage เติม:
+ *   file.path     = absolute local path  (e.g. /srv/app/tmp/uploads/1720000000-123.jpg)
+ *   file.filename = unique filename      (e.g. 1720000000-123.jpg)
+ *   file.mimetype = image/* | video/*
+ *
+ * เราใช้ path เป็น placeholder url ชั่วคราวใน DB
+ * แล้ว background job จะแทนที่ด้วย Cloudinary URL จริง
  */
-const prepareAsset = (file) => {
-  const url = file?.path || file?.secure_url || file?.url || null;
-  const public_id = file?.filename || file?.public_id || null;
-  const asset_id = file?.asset_id ?? null;
-  if (!url) return null;
-  return { asset_id, public_id, url, secure_url: url };
+const preparePlaceholderAsset = (file) => {
+  if (!file?.path) return null;
+  return {
+    asset_id: null,
+    public_id: null,
+    url: file.path,        // placeholder = local path
+    secure_url: file.path, // placeholder
+  };
 };
 
-/* =============== CREATE (CloudinaryStorage pass-through + nested create) =============== */
+/**
+ * อัปโหลดไฟล์ local ไปยัง Cloudinary
+ * @param {string} localPath - absolute path ของไฟล์บน disk
+ * @param {string} mimeType  - mimetype เช่น "image/jpeg", "video/mp4"
+ * @returns {Promise<{secure_url, public_id, asset_id}>}
+ */
+const uploadFileToCloudinary = async (localPath, mimeType) => {
+  const isVideo = mimeType?.startsWith("video/");
+  const result = await cloudinary.uploader.upload(localPath, {
+    folder: isVideo ? "property_videos" : "property_images",
+    resource_type: isVideo ? "video" : "image",
+  });
+  return {
+    secure_url: result.secure_url,
+    public_id: result.public_id,
+    asset_id: result.asset_id ?? null,
+    url: result.secure_url,
+  };
+};
+
+/**
+ * ลบไฟล์ local อย่าง silent (ไม่ throw)
+ */
+const safeDeleteLocal = (localPath) => {
+  try {
+    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+  } catch (e) {
+    console.warn("[safeDeleteLocal] could not delete:", localPath, e.message);
+  }
+};
+
+/**
+ * Phase 3 – Background upload job (fire-and-forget)
+ *
+ * อัปโหลดไฟล์ local ไปยัง Cloudinary แบบ concurrent
+ * แล้ว update DB ด้วย URL จริง และลบไฟล์ชั่วคราว
+ *
+ * @param {string} postId
+ * @param {{ path: string, mimetype: string }[]} imageFiles
+ * @param {{ path: string, mimetype: string }[]} videoFiles
+ */
+const _backgroundUploadAndUpdate = async (postId, imageFiles, videoFiles) => {
+  const tag = `[bgUpload postId=${postId}]`;
+  console.log(tag, "starting background upload:", {
+    images: imageFiles.length,
+    videos: videoFiles.length,
+  });
+
+  // ----- อัปโหลดรูปภาพ -----
+  if (imageFiles.length > 0) {
+    try {
+      const uploaded = await Promise.all(
+        imageFiles.map((f) => uploadFileToCloudinary(f.path, f.mimetype))
+      );
+
+      // ดึง Image records ที่มี placeholder url เป็น local path ของแต่ละไฟล์
+      const localPaths = imageFiles.map((f) => f.path);
+      const existingImages = await prisma.image.findMany({
+        where: { propertyPostId: postId, url: { in: localPaths } },
+        select: { id: true, url: true },
+      });
+
+      // update แต่ละ record ด้วย Cloudinary URL จริง
+      await Promise.all(
+        existingImages.map((img) => {
+          const idx = localPaths.indexOf(img.url);
+          if (idx === -1) return Promise.resolve();
+          const u = uploaded[idx];
+          return prisma.image.update({
+            where: { id: img.id },
+            data: {
+              url: u.url,
+              secure_url: u.secure_url,
+              public_id: u.public_id,
+              asset_id: u.asset_id,
+            },
+          });
+        })
+      );
+
+      // ลบ local files
+      imageFiles.forEach((f) => safeDeleteLocal(f.path));
+      console.log(tag, "images uploaded & local files deleted.");
+    } catch (err) {
+      console.error(tag, "image upload failed:", err);
+      // ลบ local files เพื่อไม่ให้ค้างอยู่ แม้จะ fail
+      imageFiles.forEach((f) => safeDeleteLocal(f.path));
+    }
+  }
+
+  // ----- อัปโหลดวิดีโอ -----
+  if (videoFiles.length > 0) {
+    try {
+      const uploaded = await Promise.all(
+        videoFiles.map((f) => uploadFileToCloudinary(f.path, f.mimetype))
+      );
+
+      const localPaths = videoFiles.map((f) => f.path);
+      const existingVideos = await prisma.video.findMany({
+        where: { postId, url: { in: localPaths } },
+        select: { id: true, url: true },
+      });
+
+      await Promise.all(
+        existingVideos.map((vid) => {
+          const idx = localPaths.indexOf(vid.url);
+          if (idx === -1) return Promise.resolve();
+          const u = uploaded[idx];
+          return prisma.video.update({
+            where: { id: vid.id },
+            data: {
+              url: u.url,
+              secure_url: u.secure_url,
+              public_id: u.public_id,
+              asset_id: u.asset_id,
+            },
+          });
+        })
+      );
+
+      videoFiles.forEach((f) => safeDeleteLocal(f.path));
+      console.log(tag, "videos uploaded & local files deleted.");
+    } catch (err) {
+      console.error(tag, "video upload failed:", err);
+      videoFiles.forEach((f) => safeDeleteLocal(f.path));
+    }
+  }
+
+  console.log(tag, "background upload job finished.");
+};
+
+/* =============== CREATE (Phase 3 – Async Cloudinary upload) =============== */
 export const createpost = async (req, res) => {
-  console.log("req.files received:", JSON.stringify(req.files, null, 2));
   try {
     if (!req.session?.user) {
       return res
@@ -64,32 +201,11 @@ export const createpost = async (req, res) => {
     // ===== Logs: files =====
     const imageFiles = filesOf(req.files, "images");
     const videoFiles = filesOf(req.files, "videos");
-    console.log(
-      "[createpost] files keys:",
-      req.files ? Object.keys(req.files) : null
-    );
-    console.log("[createpost] images count:", imageFiles.length);
-    console.log("[createpost] videos count:", videoFiles.length);
-    if (imageFiles[0]) {
-      const f = imageFiles[0];
-      console.log("[createpost] sample image file:", {
-        fieldname: f.fieldname,
-        mimetype: f.mimetype,
-        filename: f.filename, // public_id
-        path: f.path, // secure_url
-        size: f.size,
-      });
-    }
-    if (videoFiles[0]) {
-      const v = videoFiles[0];
-      console.log("[createpost] sample video file:", {
-        fieldname: v.fieldname,
-        mimetype: v.mimetype,
-        filename: v.filename,
-        path: v.path,
-        size: v.size,
-      });
-    }
+    console.log("[createpost] files received:", {
+      imageCount: imageFiles.length,
+      videoCount: videoFiles.length,
+      keys: req.files ? Object.keys(req.files) : null,
+    });
 
     const { userId, userType, sellerId } = req.session.user || {};
 
@@ -117,7 +233,7 @@ export const createpost = async (req, res) => {
       Bedrooms,
       Description,
       Deposit_Amount,
-      Deposit_Percent, // <— เพิ่มอ่านเปอร์เซ็นต์
+      Deposit_Percent,
       LinkMap,
       Province,
       District,
@@ -137,7 +253,7 @@ export const createpost = async (req, res) => {
       Other_related_expenses,
       categoryId,
       floor,
-      propertyUnits, // JSON string หรือ array
+      propertyUnits,
     } = req.body;
 
     const isSale = String(Sell_Rent || "").toUpperCase() === "SALE";
@@ -158,6 +274,8 @@ export const createpost = async (req, res) => {
     }
     // บังคับมีเงินดาวน์ (จำนวน) เมื่อ SALE
     if (isSale && (!depositAmountNum || depositAmountNum <= 0)) {
+      // cleanup local files ก่อน return error
+      [...imageFiles, ...videoFiles].forEach((f) => safeDeleteLocal(f.path));
       return res
         .status(400)
         .json({ message: "กรุณาระบุเงินดาวน์สำหรับการขาย" });
@@ -170,9 +288,10 @@ export const createpost = async (req, res) => {
         .json({ message: "กรุณาอัปโหลดรูปภาพอย่างน้อย 1 รูป" });
     }
 
-    // map ไฟล์
-    const imageData = imageFiles.map(prepareAsset).filter(Boolean);
-    const videoData = videoFiles.map(prepareAsset).filter(Boolean);
+    // Phase 3: ใช้ local path เป็น placeholder URL ใน DB
+    // background job จะแทนที่ด้วย Cloudinary URL จริงในภายหลัง
+    const imageData = imageFiles.map(preparePlaceholderAsset).filter(Boolean);
+    const videoData = videoFiles.map(preparePlaceholderAsset).filter(Boolean);
 
     // parse propertyUnits
     let parsedPropertyUnits = [];
@@ -180,6 +299,7 @@ export const createpost = async (req, res) => {
       try {
         parsedPropertyUnits = JSON.parse(propertyUnits);
       } catch {
+        [...imageFiles, ...videoFiles].forEach((f) => safeDeleteLocal(f.path));
         return res
           .status(400)
           .json({ message: "Invalid format for propertyUnits." });
@@ -188,7 +308,7 @@ export const createpost = async (req, res) => {
       parsedPropertyUnits = propertyUnits;
     }
 
-    // เตรียม data
+    // เตรียม data สำหรับ DB
     const createData = {
       Property_Name,
       Province,
@@ -211,8 +331,8 @@ export const createpost = async (req, res) => {
         ALLOWED_AMENITIES
       ),
 
-      Deposit_Amount: depositAmountNum, // <— ใช้ค่าที่คำนวณแล้ว
-      Deposit_Percent: percentNum, // <— เก็บเปอร์เซ็นต์ไว้ด้วย
+      Deposit_Amount: depositAmountNum,
+      Deposit_Percent: percentNum,
       LinkMap: LinkMap || null,
       Price: priceNum ?? 0,
       Parking_Space: toIntOrNull(Parking_Space),
@@ -241,31 +361,20 @@ export const createpost = async (req, res) => {
       user: { connect: { id: userId } },
       seller: { connect: { id: effectiveSellerId } },
 
-      // NESTED children
-      Image: imageData.length ? { create: imageData } : undefined, // FK: propertyPostId
-      Video: videoData.length ? { create: videoData } : undefined, // FK: postId
+      // บันทึก record ด้วย placeholder URLs (local path)
+      // background job จะ update เป็น Cloudinary URL จริงทีหลัง
+      Image: imageData.length ? { create: imageData } : undefined,
+      Video: videoData.length ? { create: videoData } : undefined,
     };
 
-    // Logs: summary
-    console.log("[createpost] about to create post with:", {
+    console.log("[createpost] saving to DB with placeholder URLs:", {
       Property_Name,
       Province,
-      District,
-      Subdistrict,
-      Price: createData.Price,
-      Bedrooms: createData.Bedrooms,
-      Bathroom: createData.Bathroom,
-      Sell_Rent,
-      categoryId,
-      imagesToCreate: imageData.length,
-      videosToCreate: videoData.length,
-      hasUnits: Boolean(parsedPropertyUnits?.length),
-      NumberOfUnits: createData.NumberOfUnits,
-      Deposit_Percent: createData.Deposit_Percent,
-      Deposit_Amount: createData.Deposit_Amount,
+      imagePlaceholders: imageData.length,
+      videoPlaceholders: videoData.length,
     });
 
-    // CREATE
+    // ===== STEP 1: Save to DB immediately =====
     const newPost = await prisma.propertyPost.create({
       data: createData,
       include: {
@@ -276,7 +385,7 @@ export const createpost = async (req, res) => {
       },
     });
 
-    // Auto-create Deposit เมื่อ SALE
+    // ===== STEP 2: Auto-create Deposit เมื่อ SALE =====
     if (isSale) {
       try {
         if (newPost.PropertyUnit?.length > 0) {
@@ -299,16 +408,23 @@ export const createpost = async (req, res) => {
         }
       } catch (e) {
         console.error("[createpost] deposit create failed, rolling back:", e);
-        await prisma.image.deleteMany({
-          where: { propertyPostId: newPost.id },
-        });
+        await prisma.image.deleteMany({ where: { propertyPostId: newPost.id } });
         await prisma.video.deleteMany({ where: { postId: newPost.id } });
         await prisma.propertyPost.delete({ where: { id: newPost.id } });
+        // cleanup local files
+        [...imageFiles, ...videoFiles].forEach((f) => safeDeleteLocal(f.path));
         return res.status(500).json({ message: "Create deposit failed" });
       }
     }
 
-    return res.status(201).json(newPost);
+    // ===== STEP 3: Return 201 ทันที – ไม่รอ Cloudinary =====
+    res.status(201).json(newPost);
+
+    // ===== STEP 4: Fire-and-forget background upload =====
+    // ไม่ await เพื่อให้ response ส่งออกไปก่อน
+    _backgroundUploadAndUpdate(newPost.id, imageFiles, videoFiles).catch(
+      (err) => console.error("[createpost] unhandled bgUpload error:", err)
+    );
   } catch (err) {
     console.error("createpost error:", err);
     return res.status(500).json({ message: "Server Error" });

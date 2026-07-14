@@ -3,3 +3,6 @@ node_modules
 
 .env
 /generated/prisma
+
+# Temporary local upload folder (Phase 2 – async upload)
+tmp/

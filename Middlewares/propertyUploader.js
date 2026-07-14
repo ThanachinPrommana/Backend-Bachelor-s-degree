@@ -1,38 +1,51 @@
 // Middlewares/propertyUploader.js
 import multer from "multer";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
-import cloudinary from "../utils/cloudinary.js";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 
 /**
- * ใช้ CloudinaryStorage:
- * - Multer จะอัปขึ้น Cloudinary ให้ทันทีระหว่างรับไฟล์
- * - ใน controller อ่านค่าจาก req.files โดยตรง (file.path = secure_url, file.filename = public_id)
- * - ห้ามอัปโหลดซ้ำด้วย cloudinary.uploader.upload(file.path)
+ * Phase 2 – Local Disk Storage (แทน CloudinaryStorage)
+ *
+ * ไฟล์จะถูกบันทึกลงโฟลเดอร์ชั่วคราว /tmp/uploads ก่อน
+ * แล้ว controller / background-job จะนำไปอัปโหลด Cloudinary ต่อ
+ * ผลลัพธ์: seller ได้รับ "โพสต์สำเร็จ" ทันที ไม่ต้องรอรูปอัปโหลดเสร็จ
+ *
+ * ค่าที่ใช้งานใน controller (จาก req.files[]):
+ *   file.path      – absolute path ของไฟล์ที่บันทึกบน disk
+ *   file.filename  – ชื่อไฟล์ที่ถูก rename (unique)
+ *   file.mimetype  – image/* หรือ video/*
  */
 
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: async (_req, file) => {
-    if (file.mimetype.startsWith("image/")) {
-      return {
-        folder: "property_images",
-        resource_type: "image",
-        allowed_formats: ["jpg", "jpeg", "png", "gif", "webp"],
-        // transformation: [{ quality: "auto", fetch_format: "auto" }],
-      };
-    }
-    if (file.mimetype.startsWith("video/")) {
-      return {
-        folder: "property_videos",
-        resource_type: "video",
-        allowed_formats: ["mp4", "mov", "webm"],
-      };
-    }
-    // กันไฟล์ชนิดอื่น ๆ ออก โดยให้ fileFilter ตัดทิ้ง
-    return { folder: "raw_uploads", resource_type: "raw" };
+// ---------------------------------------------------------------------------
+// สร้างโฟลเดอร์ tmp ถ้ายังไม่มี
+// ---------------------------------------------------------------------------
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const TMP_UPLOAD_DIR = path.join(__dirname, "..", "tmp", "uploads");
+if (!fs.existsSync(TMP_UPLOAD_DIR)) {
+  fs.mkdirSync(TMP_UPLOAD_DIR, { recursive: true });
+}
+
+// ---------------------------------------------------------------------------
+// diskStorage – บันทึกไฟล์ลง local disk
+// ---------------------------------------------------------------------------
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, TMP_UPLOAD_DIR);
+  },
+  filename: (_req, file, cb) => {
+    // ตั้งชื่อไฟล์ให้ unique: timestamp-random.ext
+    const ext = path.extname(file.originalname).toLowerCase();
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    cb(null, unique);
   },
 });
 
+// ---------------------------------------------------------------------------
+// fileFilter – อนุญาตเฉพาะ image/* และ video/*
+// ---------------------------------------------------------------------------
 const fileFilter = (_req, file, cb) => {
   const ok =
     file.mimetype.startsWith("image/") || file.mimetype.startsWith("video/");
@@ -43,6 +56,9 @@ const fileFilter = (_req, file, cb) => {
   );
 };
 
+// ---------------------------------------------------------------------------
+// multer instance
+// ---------------------------------------------------------------------------
 const propertyUpload = multer({
   storage,
   fileFilter,
@@ -53,4 +69,5 @@ const propertyUpload = multer({
   },
 });
 
+export { TMP_UPLOAD_DIR };
 export default propertyUpload;
