@@ -15,7 +15,7 @@ Refactor `createpost` (and update logic if necessary) in `controllers/post.js`. 
 
 ## Acceptance criteria
 
-- [ ] Controller returns HTTP 201 immediately after saving text data
-- [ ] Background process uploads images and videos to Cloudinary concurrently
-- [ ] Database is updated with the correct Cloudinary URLs after successful upload
-- [ ] Temporary files are securely deleted from the local disk after the process completes
+- [x] Controller returns HTTP 201 immediately after saving text data
+- [x] Background process uploads images and videos to Cloudinary concurrently
+- [x] Database is updated with the correct Cloudinary URLs after successful upload
+- [x] Temporary files are securely deleted from the local disk after the process completes

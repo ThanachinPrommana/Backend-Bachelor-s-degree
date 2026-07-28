@@ -14,6 +14,6 @@ Modify the `Middlewares/propertyUploader.js` file to replace `CloudinaryStorage`
 
 ## Acceptance criteria
 
-- [ ] `multer-storage-cloudinary` is replaced by `multer.diskStorage()`
-- [ ] Uploaded files are saved to a temporary local folder
-- [ ] File type and size limits are enforced
+- [x] `multer-storage-cloudinary` is replaced by `multer.diskStorage()`
+- [x] Uploaded files are saved to a temporary local folder
+- [x] File type and size limits are enforced
