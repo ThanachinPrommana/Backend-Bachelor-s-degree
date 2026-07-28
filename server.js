@@ -143,6 +143,12 @@ const routersPath = path.join(__dirname, 'routers');
 // =================================================================
 app.listen(PORT, () => {
   console.log(`🚀 Server on port ${PORT}`);
+  
+  // ปิดการทำงานของ console.log เพื่อไม่ให้ข้อมูลหลุดออกมาใน console ตอนเทสระบบ
+  console.log = () => {};
+  console.info = () => {};
+  console.warn = () => {};
+
   startNotificationSchedulers();
 });
 
